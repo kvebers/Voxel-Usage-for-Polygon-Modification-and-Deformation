@@ -1,1 +1,5 @@
 __pycache__
+venv
+tests/
+shader_tests/
+data_analysis/
