@@ -1,0 +1,98 @@
+{
+  "objects": [
+    {
+      "path": "obj/egg_smooth.obj",
+      "offset": [0, 0.0, 2.0],
+      "color": [0.9, 0.5, 0.2],
+      "resolution": 26,
+    },
+  ],
+
+  "camera": {
+    "distance": 8.0,
+    "yaw": 135.0,
+    "pitch": 25.0,
+    "target": [0.0, 0.0, 1.5],
+    "fov": 50,
+    "near": 0.1,
+    "far": 200.0,
+  },
+
+  "window": {
+    "width": 1280,
+    "height": 720,
+    "title": "Augmented Greedy Vertex Voxel Block Descent",
+    "clear_color": [0.08, 0.09, 0.12, 1.0],
+  },
+
+  "simulation": {
+    "fps": 60,
+    "substeps": 1,
+    "start_paused": true,
+  },
+
+  "ground": {
+    "position": [0.0, 0.0, -0.5],
+    "half_extents": [50.0, 50.0, 0.5],
+    "density": 0.0,
+    "ke": 5e7,
+    "kd": 2e4,
+    "kf": 1e3,
+    "mu": 0.9,
+  },
+
+  "voxels": {
+    "density": 1000.0,
+    "padding": 0.02,
+    "fill_mode": false,
+  },
+
+  "ball": {
+    "enabled": false,
+    "count": 1,
+    "radius_factor": 0.2,
+    "height_factor": 5.0,
+    "density": 1000.0,
+    "ke": 2e3,
+    "kd": 1e3,
+    "kf": 1e3,
+    "mu": 0.5,
+    "color": [0.3, 0.35, 0.85],
+  },
+
+  "solver": {
+    "rigid_body_contact_buffer_size": 16192,
+    "rigid_contact_k_start": 5e2,
+    "rigid_joint_linear_ke": 1e4,
+    "rigid_joint_angular_ke": 1e4,
+    "rigid_avbd_beta": 1e2,
+    "iterations": 20,
+    "rigid_joint_linear_kd": 500.0,
+    "rigid_joint_angular_kd": 500.0,
+  },
+
+  "elasticity": {
+    "stiffness": 50.0,
+    "damping": 20.0,
+  },
+
+  "joints": {
+    "enabled": true,
+    "linear_break_force": 30.0,
+    "angular_break_torque": 30.0,
+    "instant_break_force": 200.0,
+    "instant_break_torque": 200.0,
+    "damage_rate": 0.3,
+    "heal_rate": 0.05,
+    "max_breaks_per_step": 3,
+  },
+
+  "force_modes": {
+    "strength": 100.0,
+  },
+
+  "mesh_splitter": {
+    "base_offset": [0.0, 0.0, 1.8],
+    "deform_method": "rigid",
+  },
+}
