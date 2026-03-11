@@ -1,0 +1,69 @@
+{
+  "objects": [
+    {
+      "path": "obj/teapot.obj",
+      "offset": [0, 0.0, 1.5],
+      "color": [0.2, 0.75, 0.95],
+      "resolution": 32,
+    },
+  ],
+
+  "window": {
+    "width": 1280,
+    "height": 720,
+    "title": "Super Bouncy Teapot",
+    "clear_color": [0.08, 0.09, 0.12, 1.0],
+  },
+
+  "ground": {
+    "position": [0.0, 0.0, -0.5],
+    "half_extents": [50.0, 50.0, 0.5],
+    "density": 0.0,
+    "ke": 5e5,
+    "kd": 1e2,
+    "kf": 1e3,
+    "mu": 3e1,
+  },
+
+  "voxels": {
+    "density": 150.0,
+    "padding": 0.02,
+    "fill_mode": true,
+  },
+
+  "elasticity": {
+    "stiffness": 1300.0,
+    "damping": 2.0,
+  },
+
+  "solver": {
+    "rigid_body_contact_buffer_size": 8192,
+    "rigid_contact_k_start": 8e2,
+    "rigid_joint_linear_ke": 3e2,
+    "rigid_joint_angular_ke": 3e2,
+    "rigid_avbd_beta": 1e2,
+    "iterations": 6,
+    "rigid_joint_linear_kd": 8.0,
+    "rigid_joint_angular_kd": 8.0,
+  },
+
+  "joints": {
+    "enabled": true,
+    "linear_break_force": 1e9,
+    "angular_break_torque": 1e9,
+    "damage_rate": 0.0,
+    "heal_rate": 0.0,
+    "instant_break_force": 1e12,
+    "instant_break_torque": 1e12,
+    "max_breaks_per_step": 0,
+  },
+
+  "render": {
+    "default_mode": "mesh",
+    "mesh_color": [0.2, 0.75, 0.95],
+  },
+
+  "force_modes": {
+    "strength": 100.0,
+  },
+}

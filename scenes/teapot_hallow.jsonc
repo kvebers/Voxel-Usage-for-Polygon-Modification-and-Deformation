@@ -1,0 +1,40 @@
+{
+  "objects": [
+    {
+      "path": "obj/teapot.obj",
+      "offset": [0, 0.0, 2.0],
+      "color": [0.9, 0.5, 0.2],
+      "resolution": 32,
+    },
+  ],
+
+  "voxels": {
+    "density": 600.0,
+    "padding": 0.02,
+    "fill_mode": false,
+    "ensure_connected": false,
+    "greedy_merge": false,
+  },
+
+  "solver": {
+    "rigid_body_contact_buffer_size": 4096,
+    "rigid_contact_k_start": 1e4,
+    "rigid_joint_linear_ke": 1e3,
+    "rigid_joint_angular_ke": 1e3,
+    "rigid_avbd_beta": 5e2,
+    "iterations": 3,
+    "rigid_joint_linear_kd": 500.0,
+    "rigid_joint_angular_kd": 500.0,
+  },
+
+  "joints": {
+    "enabled": true,
+    "linear_break_force": 3500.0,
+    "angular_break_torque": 4500.0,
+    "damage_rate": 0.3,
+    "heal_rate": 0.1,
+    "instant_break_force": 1e8,
+    "instant_break_torque": 1e8,
+    "max_breaks_per_step": 2,
+  },
+}

@@ -1,0 +1,171 @@
+{
+  "objects": [
+    {
+      "path": "obj/angel.obj",
+      "offset": [0.0, 0.0, 0.3],
+      "color": [0.58, 0.84, 0.93],
+      "resolution": 12,
+      "scale": 1,
+    },
+    {
+      "path": "obj/tie.obj",
+      "offset": [2.0, 0, 0.3],
+      "color": [0.58, 0.84, 0.93],
+      "resolution": 12,
+      "scale": 1,
+    },
+    {
+      "path": "obj/totem.obj",
+      "offset": [0, 2.0, 0.3],
+      "color": [0.58, 0.84, 0.93],
+      "resolution": 12,
+      "scale": 1,
+    },
+    {
+      "path": "obj/cone.obj",
+      "offset": [2.0, 2.0, 0.3],
+      "color": [0.58, 0.84, 0.93],
+      "resolution": 12,
+      "scale": 1,
+    },
+    {
+      "path": "obj/bigben.obj",
+      "offset": [4.0, 4.0, 0.3],
+      "color": [0.58, 0.84, 0.93],
+      "resolution": 12,
+      "scale": 1,
+    },
+    {
+      "path": "obj/space_station.obj",
+      "offset": [2.0, 4.0, 0.3],
+      "color": [0.58, 0.84, 0.93],
+      "resolution": 12,
+      "scale": 1,
+    },
+    {
+      "path": "obj/horse.obj",
+      "offset": [-2.0, 0.0, 0.3],
+      "color": [0.58, 0.84, 0.93],
+      "resolution": 12,
+      "scale": 1,
+    },
+    {
+      "path": "obj/hand.obj",
+      "offset": [-2.0, -2.0, 0.3],
+      "color": [0.58, 0.84, 0.93],
+      "resolution": 12,
+      "scale": 1,
+    },
+    {
+      "path": "obj/icosa.obj",
+      "offset": [6.0, 2.0, 0.3],
+      "color": [0.58, 0.84, 0.93],
+      "resolution": 12,
+      "scale": 1,
+    },
+    {
+      "path": "obj/head.obj",
+      "offset": [6.0, 4.0, 0.3],
+      "color": [0.58, 0.84, 0.93],
+      "resolution": 12,
+      "scale": 1,
+    },
+    {
+      "path": "obj/goblet.obj",
+      "offset": [6.0, 6.0, 0.3],
+      "color": [0.58, 0.84, 0.93],
+      "resolution": 12,
+      "scale": 1,
+    },
+    {
+      "path": "obj/happy.obj",
+      "offset": [6.0, 8.0, 0.3],
+      "color": [0.58, 0.84, 0.93],
+      "resolution": 12,
+      "scale": 1,
+    },
+    {
+      "path": "obj/blade.obj",
+      "offset": [4.0, 8.0, 0.3],
+      "color": [0.58, 0.84, 0.93],
+      "resolution": 12,
+      "scale": 1,
+    },
+    {
+      "path": "obj/Schiff.obj",
+      "offset": [2.0, 8.0, 0.3],
+      "color": [0.58, 0.84, 0.93],
+      "resolution": 12,
+      "scale": 1,
+    },
+  ],
+
+  "camera": {
+    "position": [-5.0, -4.0, 4.0],
+    "target": [0.7, -1.4, 3.0],
+    "fov": 50,
+    "near": 0.1,
+    "far": 200.0,
+  },
+
+  "simulation": {
+    "fps": 60,
+    "substeps": 4,
+    "start_paused": true,
+  },
+
+  "ground": {
+    "position": [0.0, 0.0, -0.5],
+    "half_extents": [50.0, 50.0, 0.5],
+    "density": 0.0,
+    "ke": 1e6,
+    "kd": 2e3,
+    "kf": 1e3,
+    "mu": 0.98,
+  },
+
+  "voxels": {
+    "density": 30.0,
+    "padding": 0.02,
+    "fill_mode": true,
+    "ensure_connected": true,
+    "greedy_merge": true,
+    "ke": 1e6,
+    "kd": 1e3,
+  },
+
+  "solver": {
+    "rigid_body_contact_buffer_size": 16384,
+    "rigid_contact_k_start": 1e5,
+    "rigid_joint_linear_ke": 1e10,
+    "rigid_joint_angular_ke": 1e10,
+    "rigid_avbd_beta": 1e5,
+    "iterations": 20,
+    "rigid_joint_linear_kd": 500.0,
+    "rigid_joint_angular_kd": 500.0,
+  },
+
+  "joints": {
+    "enabled": true,
+    "linear_break_force": 1e18,
+    "angular_break_torque": 1e18,
+    "damage_rate": 0.3,
+    "heal_rate": 0.1,
+    "instant_break_force": 1e18,
+    "instant_break_torque": 1e18,
+    "max_breaks_per_step": 3,
+  },
+
+  "render": {
+    "default_mode": "mesh",
+    "mesh_color": [0.7, 0.95, 0.2],
+  },
+
+  "force_modes": {
+    "strength": 20.0,
+  },
+
+  "mesh_splitter": {
+    "deform_method": "rigid",
+  },
+}
