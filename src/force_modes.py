@@ -2,6 +2,14 @@ import numpy as np
 import warp as wp
 
 
+def _subtract_component_mean(arr, labels):
+    result = arr.copy()
+    for comp_id in np.unique(labels):
+        mask = labels == comp_id
+        result[mask] -= arr[mask].mean(axis=0, keepdims=True)
+    return result
+
+
 class ForceApplier:
     def __init__(
         self,
@@ -84,7 +92,6 @@ class ForceApplier:
 
         body_f = state.body_f.numpy().copy()
         cur_pos = state.body_q.numpy()[vbs : vbs + n, :3].astype(np.float32)
-
         displacement = cur_pos - self.rest_pos
 
         if broken is not None and len(broken) > 0 and np.any(broken):
@@ -92,19 +99,12 @@ class ForceApplier:
         else:
             labels = np.zeros(n, dtype=np.int32)
 
-        deformation = displacement.copy()
-        for comp_id in np.unique(labels):
-            mask = labels == comp_id
-            deformation[mask] -= displacement[mask].mean(axis=0, keepdims=True)
-
+        deformation = _subtract_component_mean(displacement, labels)
         body_f[vbs : vbs + n, :3] -= (self.stiffness * m) * deformation
 
         if self.damping != 0.0:
             lin_vel = state.body_qd.numpy()[vbs : vbs + n, :3].astype(np.float32)
-            vel_deform = lin_vel.copy()
-            for comp_id in np.unique(labels):
-                mask = labels == comp_id
-                vel_deform[mask] -= lin_vel[mask].mean(axis=0, keepdims=True)
+            vel_deform = _subtract_component_mean(lin_vel, labels)
             body_f[vbs : vbs + n, :3] -= (self.damping * m) * vel_deform
 
         state.body_f = wp.array(body_f, dtype=state.body_f.dtype, device=device)

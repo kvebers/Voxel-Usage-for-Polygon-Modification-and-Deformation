@@ -189,13 +189,18 @@ class ObjectRenderer:
 class Renderer:
     def __init__(self, ball_radius, max_balls=1):
         self.ball_radius = ball_radius
+        self._compile_programs()
+        self._setup_lighting()
+        self._setup_ground_geometry()
+        self._setup_sphere_geometry(max_balls)
+
+    def _compile_programs(self):
         self.prog_mesh = compile_shader_program(VERT_MESH, FRAG_BLINN)
         self.prog_inst = compile_shader_program(VERT_INSTANCED, FRAG_BLINN)
         self.prog_inst_color = compile_shader_program(
             VERT_INSTANCED_COLOR, FRAG_BLINN_INSTANCED
         )
         self.prog_ground = compile_shader_program(VERT_GROUND, FRAG_GROUND)
-
         self._uloc_mesh = _cache_locs(
             self.prog_mesh,
             ["uProj", "uView", "uColor", "uLightDir", "uCamPos", "uAmbient"],
@@ -209,6 +214,7 @@ class Renderer:
         )
         self._uloc_ground = _cache_locs(self.prog_ground, ["uProj", "uView"])
 
+    def _setup_lighting(self):
         glUseProgram(self.prog_mesh)
         glUniform3fv(self._uloc_mesh["uLightDir"], 1, _LIGHT_DIR)
         glUniform1f(self._uloc_mesh["uAmbient"], 0.4)
@@ -219,12 +225,16 @@ class Renderer:
         glUniform3fv(self._uloc_inst_color["uLightDir"], 1, _LIGHT_DIR)
         glUniform1f(self._uloc_inst_color["uAmbient"], 0.4)
         glUseProgram(0)
+
+    def _setup_ground_geometry(self):
         ground_data, self.ground_vert_count = make_ground_quad()
         self.ground_vao = create_vao()
         self.ground_vbo = create_buffer(ground_data)
         setup_ground_vao(self.ground_vao, self.ground_vbo)
         cube_data, self.cube_vert_count = make_unit_cube()
         self.cube_geom_vbo = create_buffer(cube_data)
+
+    def _setup_sphere_geometry(self, max_balls):
         sphere_data, self.sphere_vert_count = make_uv_sphere(20, 14)
         self.sphere_geom_vbo = create_buffer(sphere_data)
         self._max_balls = max(max_balls, 1)

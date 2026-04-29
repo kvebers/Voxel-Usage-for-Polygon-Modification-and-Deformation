@@ -69,7 +69,7 @@
     "density": 300.0,
     "padding": 0.02,
     "fill_mode": true,
-    "greedy_merge": true,
+    "greedy_merge": false,
   },
 
   "ball": {

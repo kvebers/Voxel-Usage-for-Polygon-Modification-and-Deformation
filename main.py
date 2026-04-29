@@ -804,9 +804,7 @@ def render_frame(renderer, scene, sim, obj_list, proj, view, eye, cfg, profiler=
     )
 
 
-def main(scene_file: str = "scene.json", profile: bool = False, record: str = None):
-    setup = Profiler() if profile else NullProfiler()
-    profiler = Profiler() if profile else NullProfiler()
+def _load_and_build_scene(scene_file, setup):
     with setup.section("load_config"):
         cfg = load_config(scene_file)
         obj_cfgs = get_object_configs(cfg)
@@ -820,68 +818,73 @@ def main(scene_file: str = "scene.json", profile: bool = False, record: str = No
             vox_ctx.release()
     with setup.section("build_scene"):
         scene = build_scene_multi(all_obj_data, cfg)
+    return cfg, all_obj_data, scene
+
+
+def _create_per_object_components(all_obj_data, scene, cfg):
     obj_list = []
     joint_breakers = []
     mesh_splitters = []
     force_appliers = []
-
-    with setup.section("create_components"):
-        for i, (obj_data, obj_scene) in enumerate(zip(all_obj_data, scene["objects"])):
-            jb = create_joint_breaker(obj_scene, scene["model"], cfg)
-            ms = create_mesh_splitter(
-                obj_data["indices"],
-                obj_scene,
-                obj_data["centered_verts"],
-                obj_scene["neighbor_pairs"],
-                cfg,
-            )
-            ms.set_broken(jb.broken)
-            el_cfg = getattr(cfg, "elasticity", None)
-            _half = obj_scene["half"]
-            _voxel_mass = cfg.voxels.density * 8.0 * _half**3
-            fa = ForceApplier(
-                obj_scene["positions"],
-                obj_scene["voxel_body_start"],
-                obj_scene["voxel_count"],
-                stiffness=el_cfg.stiffness if el_cfg else 0.0,
-                damping=el_cfg.damping if el_cfg else 0.0,
-                voxel_mass=_voxel_mass,
-                neighbor_pairs=obj_scene["neighbor_pairs"],
-            )
-            obj_list.append(
-                {
-                    "scene": obj_scene,
-                    "mesh_splitter": ms,
-                    "joint_breaker": jb,
-                    "color": obj_data["color"],
-                }
-            )
-            joint_breakers.append(jb)
-            mesh_splitters.append(ms)
-            force_appliers.append(fa)
-
-    with setup.section("init_renderer"):
-        width, height = init_window(cfg)
-        renderer = Renderer(
-            scene["ball_radius"], max_balls=max(1, len(scene["ball_bodies"]))
+    el_cfg = getattr(cfg, "elasticity", None)
+    for obj_data, obj_scene in zip(all_obj_data, scene["objects"]):
+        jb = create_joint_breaker(obj_scene, scene["model"], cfg)
+        ms = create_mesh_splitter(
+            obj_data["indices"],
+            obj_scene,
+            obj_data["centered_verts"],
+            obj_scene["neighbor_pairs"],
+            cfg,
         )
+        ms.set_broken(jb.broken)
+        _half = obj_scene["half"]
+        _voxel_mass = cfg.voxels.density * 8.0 * _half**3
+        fa = ForceApplier(
+            obj_scene["positions"],
+            obj_scene["voxel_body_start"],
+            obj_scene["voxel_count"],
+            stiffness=el_cfg.stiffness if el_cfg else 0.0,
+            damping=el_cfg.damping if el_cfg else 0.0,
+            voxel_mass=_voxel_mass,
+            neighbor_pairs=obj_scene["neighbor_pairs"],
+        )
+        obj_list.append(
+            {
+                "scene": obj_scene,
+                "mesh_splitter": ms,
+                "joint_breaker": jb,
+                "color": obj_data["color"],
+            }
+        )
+        joint_breakers.append(jb)
+        mesh_splitters.append(ms)
+        force_appliers.append(fa)
+    return obj_list, joint_breakers, mesh_splitters, force_appliers
 
-        for obj in obj_list:
-            obj_scene = obj["scene"]
-            i = obj_list.index(obj)
-            obj_renderer = renderer.create_object_renderer(
-                all_obj_data[i]["indices"],
-                obj_scene["voxel_count"],
-                obj_scene["half"],
-                block_halves=obj_scene["block_halves_world"],
-            )
-            obj_renderer.setup_gpu_deform(obj["mesh_splitter"])
-            obj["obj_renderer"] = obj_renderer
 
-    cam = init_camera(cfg)
-    sim = init_sim_state(cfg)
+def _init_renderer(scene, obj_list, all_obj_data, cfg):
+    width, height = init_window(cfg)
+    renderer = Renderer(
+        scene["ball_radius"], max_balls=max(1, len(scene["ball_bodies"]))
+    )
+    for i, obj in enumerate(obj_list):
+        obj_scene = obj["scene"]
+        obj_renderer = renderer.create_object_renderer(
+            all_obj_data[i]["indices"],
+            obj_scene["voxel_count"],
+            obj_scene["half"],
+            block_halves=obj_scene["block_halves_world"],
+        )
+        obj_renderer.setup_gpu_deform(obj["mesh_splitter"])
+        obj["obj_renderer"] = obj_renderer
+    return renderer, width, height
+
+
+def _run_game_loop(
+    scene, sim, cam, cfg, obj_list, joint_breakers, mesh_splitters, force_appliers,
+    renderer, profiler, recorder, width, height
+):
     clock = pygame.time.Clock()
-    recorder = VideoRecorder(record, width, height, sim["fps"]) if record else None
     was_simulating = sim["simulating"]
     running = True
     while running:
@@ -889,39 +892,22 @@ def main(scene_file: str = "scene.json", profile: bool = False, record: str = No
             with profiler.section("events"):
                 running, width, height = handle_events(cam, sim, width, height)
                 pan_camera(cam)
-            if (
-                recorder
-                and not recorder.active
-                and sim["simulating"]
-                and not was_simulating
-            ):
+            if recorder and not recorder.active and sim["simulating"] and not was_simulating:
                 recorder.start()
-            elif (
-                recorder
-                and recorder.active
-                and not sim["simulating"]
-                and was_simulating
-            ):
+            elif recorder and recorder.active and not sim["simulating"] and was_simulating:
                 recorder.stop()
             was_simulating = sim["simulating"]
 
             if sim["simulating"]:
                 with profiler.section("simulation"):
                     step_simulation(
-                        scene,
-                        sim,
-                        joint_breakers,
-                        mesh_splitters,
-                        force_appliers,
-                        profiler,
+                        scene, sim, joint_breakers, mesh_splitters, force_appliers, profiler
                     )
 
             proj, view, eye = compute_view_projection(cam, width, height)
 
             with profiler.section("render"):
-                render_frame(
-                    renderer, scene, sim, obj_list, proj, view, eye, cfg, profiler
-                )
+                render_frame(renderer, scene, sim, obj_list, proj, view, eye, cfg, profiler)
             if recorder and recorder.active:
                 recorder.write_frame(width, height)
             pygame.display.flip()
@@ -929,6 +915,31 @@ def main(scene_file: str = "scene.json", profile: bool = False, record: str = No
         clock.tick(sim["fps"])
     if recorder and recorder.active:
         recorder.stop()
+
+
+def main(scene_file: str = "scene.json", profile: bool = False, record: str = None):
+    setup = Profiler() if profile else NullProfiler()
+    profiler = Profiler() if profile else NullProfiler()
+
+    cfg, all_obj_data, scene = _load_and_build_scene(scene_file, setup)
+
+    with setup.section("create_components"):
+        obj_list, joint_breakers, mesh_splitters, force_appliers = (
+            _create_per_object_components(all_obj_data, scene, cfg)
+        )
+
+    with setup.section("init_renderer"):
+        renderer, width, height = _init_renderer(scene, obj_list, all_obj_data, cfg)
+
+    cam = init_camera(cfg)
+    sim = init_sim_state(cfg)
+    recorder = VideoRecorder(record, width, height, sim["fps"]) if record else None
+
+    _run_game_loop(
+        scene, sim, cam, cfg, obj_list, joint_breakers, mesh_splitters, force_appliers,
+        renderer, profiler, recorder, width, height
+    )
+
     setup.save_summary_csv("profile_setup.csv")
     profiler.save_csv("profile_frames.csv")
     pygame.quit()

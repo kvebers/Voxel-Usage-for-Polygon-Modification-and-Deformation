@@ -151,6 +151,16 @@ class MeshSplitter:
         cfg=None,
     ):
         ms_cfg = getattr(cfg, "mesh_splitter", None) if cfg is not None else None
+        self._setup_deform_method(ms_cfg)
+        self._build_adjacency(n_voxels, neighbor_pairs)
+        vox_tree, positions_arr = self._compute_voxel_centers(
+            positions, mesh_verts, bindings, offsets, n_voxels
+        )
+        self._assign_vertices_to_voxels(indices, mesh_verts, n_voxels, vox_tree)
+        self._compute_blend_weights(vox_tree, voxel_half, n_voxels)
+        self._initialize_rest_geometry(positions_arr)
+
+    def _setup_deform_method(self, ms_cfg):
         if ms_cfg is not None:
             self.BASE_ROT = np.array(ms_cfg.base_rot, dtype=np.float32)
             self.BASE_OFFSET = np.array(ms_cfg.base_offset, dtype=np.float32)
@@ -162,6 +172,8 @@ class MeshSplitter:
         if method_name not in DEFORM_METHODS:
             raise ValueError(f"Incorrect Method")
         self._deform_fn = DEFORM_METHODS[method_name]
+
+    def _build_adjacency(self, n_voxels, neighbor_pairs):
         self.n_voxels = n_voxels
         self._adj_list = [[] for _ in range(n_voxels)]
         self.joint_map = {}
@@ -173,6 +185,8 @@ class MeshSplitter:
         self.broken = np.zeros(len(neighbor_pairs), dtype=bool)
         self._reach_mask = None
         self._broken_dirty = False
+
+    def _compute_voxel_centers(self, positions, mesh_verts, bindings, offsets, n_voxels):
         positions_arr = np.array(positions, dtype=np.float32)
         vox_centers_shifted = positions_arr @ self.BASE_ROT
         orig_bindings = np.array(bindings, dtype=np.int32)
@@ -197,6 +211,10 @@ class MeshSplitter:
         vox_centers_mesh[valid] = vox_model[valid]
         self.vox_centers_mesh = vox_centers_mesh
         vox_tree = KDTree(vox_centers_mesh)
+        return vox_tree, positions_arr
+
+    def _assign_vertices_to_voxels(self, indices, mesh_verts, n_voxels, vox_tree):
+        vox_centers_mesh = self.vox_centers_mesh
         orig_indices = indices.reshape(-1, 3)
         v0s = mesh_verts[orig_indices[:, 0]]
         v1s = mesh_verts[orig_indices[:, 1]]
@@ -217,11 +235,9 @@ class MeshSplitter:
             off_1 = np.empty((0, 3), dtype=np.float32)
             idx_1 = np.empty(0, dtype=np.uint32)
 
-        bind_arr, off_arr, idx_arr = owners_3, off_1, idx_1
-
-        self.split_bindings = bind_arr.astype(np.int32)
-        self.split_offsets = off_arr.astype(np.float32).reshape(-1, 3)
-        self.split_indices = idx_arr.astype(np.uint32)
+        self.split_bindings = owners_3.astype(np.int32)
+        self.split_offsets = off_1.astype(np.float32).reshape(-1, 3)
+        self.split_indices = idx_1.astype(np.uint32)
         self.n_split_verts = len(self.split_bindings)
         self._vox_to_verts = [[] for _ in range(n_voxels)]
         valid_vi = np.where(self.split_bindings >= 0)[0]
@@ -238,6 +254,8 @@ class MeshSplitter:
         self.split_mesh_verts = (
             self.split_offsets + vox_centers_mesh[self.split_bindings]
         )
+
+    def _compute_blend_weights(self, vox_tree, voxel_half, n_voxels):
         K = min(4, n_voxels)
         lbs_dists, lbs_idx = vox_tree.query(self.split_mesh_verts, k=K)
         lbs_dists = lbs_dists.reshape(-1, K)
@@ -247,15 +265,15 @@ class MeshSplitter:
         if missing.any():
             lbs_idx[missing, -1] = self.split_bindings[missing]
             mv = self.split_mesh_verts[missing]
-            pv = vox_centers_mesh[self.split_bindings[missing]]
+            pv = self.vox_centers_mesh[self.split_bindings[missing]]
             lbs_dists[missing, -1] = np.linalg.norm(mv - pv, axis=1).astype(np.float32)
-
         sigma = 2.0 * voxel_half
         lbs_w = np.exp(-(lbs_dists**2) / (2.0 * sigma**2)).astype(np.float32)
         lbs_w /= np.maximum(lbs_w.sum(axis=1, keepdims=True), 1e-8)
         self.blend_indices = lbs_idx.astype(np.int32)
         self.blend_weights = lbs_w
 
+    def _initialize_rest_geometry(self, positions_arr):
         self._cached_out = None
         self._cached_idx = None
         self._last_voxel_slice = None
@@ -270,9 +288,7 @@ class MeshSplitter:
         self.rest_normals = _compute_normals(
             _init_pos, self.split_indices.reshape(-1, 3), self.n_split_verts
         )
-
         self.current_index_count = len(self.split_indices)
-
         self._update_reach_mask()
 
     def set_broken(self, broken):

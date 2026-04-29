@@ -105,6 +105,24 @@ def _make_struct6() -> tuple[np.ndarray, np.ndarray]:
     return struct6, kernel
 
 
+def _find_closest_gap(labeled, main_label, main_coords):
+    main_tree = KDTree(main_coords)
+    n = int(labeled.max())
+    best_dist = np.inf
+    best_src = best_dst = None
+    for comp in range(1, n + 1):
+        if comp == main_label:
+            continue
+        comp_coords = np.argwhere(labeled == comp)
+        dists, idxs = main_tree.query(comp_coords)
+        i = int(dists.argmin())
+        if dists[i] < best_dist:
+            best_dist = dists[i]
+            best_src = comp_coords[i]
+            best_dst = main_coords[idxs[i]]
+    return best_src, best_dst
+
+
 def repair_isolated_voxels(active: np.ndarray, pool: np.ndarray) -> np.ndarray:
     struct6, _ = _make_struct6()
     result = active.astype(bool).copy()
@@ -117,19 +135,7 @@ def repair_isolated_voxels(active: np.ndarray, pool: np.ndarray) -> np.ndarray:
         sizes[0] = 0
         main_label = int(sizes.argmax())
         main_coords = np.argwhere(labeled == main_label)
-        main_tree = KDTree(main_coords)
-        best_dist = np.inf
-        best_src = best_dst = None
-        for comp in range(1, n + 1):
-            if comp == main_label:
-                continue
-            comp_coords = np.argwhere(labeled == comp)
-            dists, idxs = main_tree.query(comp_coords)
-            i = int(dists.argmin())
-            if dists[i] < best_dist:
-                best_dist = dists[i]
-                best_src = comp_coords[i]
-                best_dst = main_coords[idxs[i]]
+        best_src, best_dst = _find_closest_gap(labeled, main_label, main_coords)
         pos = list(best_src)
         for axis in range(3):
             while pos[axis] != best_dst[axis]:
@@ -171,7 +177,7 @@ def greedy_merge_grid(grid: np.ndarray) -> list:
     return blocks
 
 
-def build_block_topology(blocks: list, grid_shape: tuple):
+def _build_block_geometry(blocks: list, grid_shape: tuple):
     voxel_to_block = np.full(grid_shape, -1, dtype=np.int32)
     for bi, (x0, y0, z0, x1, y1, z1) in enumerate(blocks):
         voxel_to_block[x0 : x1 + 1, y0 : y1 + 1, z0 : z1 + 1] = bi
@@ -183,7 +189,10 @@ def build_block_topology(blocks: list, grid_shape: tuple):
         ((x1 - x0 + 1) / 2.0, (y1 - y0 + 1) / 2.0, (z1 - z0 + 1) / 2.0)
         for x0, y0, z0, x1, y1, z1 in blocks
     ]
-    pair_joints: dict = {}
+    return voxel_to_block, block_centers, block_halves_voxel
+
+
+def _enumerate_joint_contacts(blocks, voxel_to_block, block_centers, grid_shape):
     face_defs = [
         ((-1, 0, 0), lambda b: (b[0], b[0], b[1], b[4], b[2], b[5])),
         ((+1, 0, 0), lambda b: (b[3], b[3], b[1], b[4], b[2], b[5])),
@@ -192,9 +201,8 @@ def build_block_topology(blocks: list, grid_shape: tuple):
         ((0, 0, -1), lambda b: (b[0], b[3], b[1], b[4], b[2], b[2])),
         ((0, 0, +1), lambda b: (b[0], b[3], b[1], b[4], b[5], b[5])),
     ]
-
+    pair_joints: dict = {}
     for bi, blk in enumerate(blocks):
-        x0, y0, z0, x1, y1, z1 = blk
         for (dx, dy, dz), face_fn in face_defs:
             fx0, fx1, fy0, fy1, fz0, fz1 = face_fn(blk)
             fxs, fys, fzs = np.meshgrid(
@@ -243,6 +251,16 @@ def build_block_topology(blocks: list, grid_shape: tuple):
                     (jx - cx_b, jy - cy_b, jz - cz_b),
                 )
             )
+    return neighbor_pairs, joint_voxel_offsets
+
+
+def build_block_topology(blocks: list, grid_shape: tuple):
+    voxel_to_block, block_centers, block_halves_voxel = _build_block_geometry(
+        blocks, grid_shape
+    )
+    neighbor_pairs, joint_voxel_offsets = _enumerate_joint_contacts(
+        blocks, voxel_to_block, block_centers, grid_shape
+    )
     return block_centers, block_halves_voxel, neighbor_pairs, joint_voxel_offsets
 
 
@@ -278,6 +296,55 @@ def _get_cache(ctx: moderngl.Context) -> dict:
     return _cache[ctx_id]
 
 
+def _update_vbo(ctx, c, transformed):
+    vert_bytes = transformed.nbytes
+    if c["vbo_size"] < vert_bytes:
+        if c["vbo"] is not None:
+            c["vbo"].release()
+        c["vbo"] = ctx.buffer(reserve=vert_bytes)
+        c["vbo_size"] = vert_bytes
+    c["vbo"].write(transformed.tobytes())
+
+
+def _update_fbo(ctx, c, res):
+    if c["fbo_res"] != res:
+        if c["fbo"] is not None:
+            c["fbo"].release()
+        if c["dummy_tex"] is not None:
+            c["dummy_tex"].release()
+        c["dummy_tex"] = ctx.texture((res, res), 4, dtype="f1")
+        c["fbo"] = ctx.framebuffer(color_attachments=[c["dummy_tex"]])
+        c["fbo_res"] = res
+
+
+def _update_ssbo(ctx, c, ssbo_bytes):
+    if c["ssbo_size"] < ssbo_bytes:
+        if c["ssbo"] is not None:
+            c["ssbo"].release()
+        c["ssbo"] = ctx.buffer(reserve=ssbo_bytes)
+        c["ssbo_size"] = ssbo_bytes
+    c["ssbo"].clear()
+
+
+def _render_and_read(ctx, c, prog, vao, res, words_z):
+    ssbo_bytes = res * res * words_z * 4
+    prog["u_res"].value = res
+    prog["u_words_z"].value = words_z
+    prog["u_width"].value = res
+    c["ssbo"].bind_to_storage_buffer(0)
+    c["fbo"].use()
+    c["fbo"].clear()
+    ctx.disable(moderngl.DEPTH_TEST)
+    ctx.disable(moderngl.CULL_FACE)
+    vao.render(moderngl.TRIANGLES)
+    ctx.memory_barrier()
+    raw = np.frombuffer(c["ssbo"].read(size=ssbo_bytes), dtype=np.uint32)
+    raw = raw.reshape(res, res, words_z)
+    return unpack_voxel_bits(
+        raw, resolution=res, n_words=words_z, word_axis=2, transpose=(1, 0, 2)
+    )
+
+
 def voxelize_gpu(
     vertex_data: np.ndarray,
     resolution: int = 64,
@@ -289,7 +356,6 @@ def voxelize_gpu(
     if own_ctx:
         ctx = moderngl.create_standalone_context()
     res = resolution
-    w = h = res
     words_z = (res + 31) // 32
     if prenormalized:
         transformed = np.asarray(vertex_data, dtype=np.float32).reshape(-1, 3)
@@ -297,48 +363,11 @@ def voxelize_gpu(
         transformed, _num_tris = preprocess_vertices(vertex_data, pad=0.01)
     c = _get_cache(ctx)
     prog = c["prog"]
-    vert_bytes = transformed.nbytes
-    if c["vbo_size"] < vert_bytes:
-        if c["vbo"] is not None:
-            c["vbo"].release()
-        c["vbo"] = ctx.buffer(reserve=vert_bytes)
-        c["vbo_size"] = vert_bytes
-    c["vbo"].write(transformed.tobytes())
+    _update_vbo(ctx, c, transformed)
     vao = ctx.vertex_array(prog, [(c["vbo"], "3f", "in_position")])
-    if c["fbo_res"] != res:
-        if c["fbo"] is not None:
-            c["fbo"].release()
-        if c["dummy_tex"] is not None:
-            c["dummy_tex"].release()
-        c["dummy_tex"] = ctx.texture((w, h), 4, dtype="f1")
-        c["fbo"] = ctx.framebuffer(color_attachments=[c["dummy_tex"]])
-        c["fbo_res"] = res
-    ssbo_bytes = w * h * words_z * 4
-    if c["ssbo_size"] < ssbo_bytes:
-        if c["ssbo"] is not None:
-            c["ssbo"].release()
-        c["ssbo"] = ctx.buffer(reserve=ssbo_bytes)
-        c["ssbo_size"] = ssbo_bytes
-    c["ssbo"].clear()
-    prog["u_res"].value = res
-    prog["u_words_z"].value = words_z
-    prog["u_width"].value = w
-    c["ssbo"].bind_to_storage_buffer(0)
-    c["fbo"].use()
-    c["fbo"].clear()
-    ctx.disable(moderngl.DEPTH_TEST)
-    ctx.disable(moderngl.CULL_FACE)
-    vao.render(moderngl.TRIANGLES)
-    ctx.memory_barrier()
-    raw = np.frombuffer(c["ssbo"].read(size=ssbo_bytes), dtype=np.uint32)
-    raw = raw.reshape(h, w, words_z)
-    grid = unpack_voxel_bits(
-        raw,
-        resolution=res,
-        n_words=words_z,
-        word_axis=2,
-        transpose=(1, 0, 2),
-    )
+    _update_fbo(ctx, c, res)
+    _update_ssbo(ctx, c, res * res * words_z * 4)
+    grid = _render_and_read(ctx, c, prog, vao, res, words_z)
     vao.release()
     if own_ctx:
         ctx.release()
