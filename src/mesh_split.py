@@ -23,6 +23,45 @@ def _compute_normals(pos, idx_tris, n_verts):
     return normals
 
 
+def _compute_model_space_centers(mesh_verts, orig_bindings, orig_offsets, n_voxels):
+    vox_model = np.zeros((n_voxels, 3), dtype=np.float32)
+    vox_counts = np.zeros(n_voxels, dtype=np.int32)
+    valid_vis = np.where(orig_bindings >= 0)[0]
+    if len(valid_vis) > 0:
+        vox_ids = orig_bindings[valid_vis]
+        np.add.at(vox_model, vox_ids, mesh_verts[valid_vis] - orig_offsets[valid_vis])
+        np.add.at(vox_counts, vox_ids, 1)
+    valid = vox_counts > 0
+    vox_model[valid] /= vox_counts[valid, None]
+    return vox_model, valid
+
+
+def _build_vox_to_verts_index(n_voxels, split_bindings):
+    vox_to_verts = [[] for _ in range(n_voxels)]
+    valid_vi = np.where(split_bindings >= 0)[0]
+    if len(valid_vi) > 0:
+        bv_arr = split_bindings[valid_vi]
+        order = np.argsort(bv_arr, kind="stable")
+        sorted_vis = valid_vi[order]
+        sorted_bvs = bv_arr[order]
+        splits = np.searchsorted(sorted_bvs, np.arange(n_voxels + 1))
+        for bv in range(n_voxels):
+            vox_to_verts[bv] = sorted_vis[splits[bv] : splits[bv + 1]].tolist()
+    return vox_to_verts
+
+
+def _compute_blended_positions(voxel_pos, voxel_rots, vox_centers_mesh, sv, bi, bw, base_rot):
+    blended = np.zeros((len(sv), 3), dtype=np.float32)
+    for k in range(bi.shape[1]):
+        vi = bi[:, k]
+        w = bw[:, k, None]
+        off_k = sv - vox_centers_mesh[vi]
+        woff_k = (base_rot @ off_k.T).T
+        p_k = voxel_pos[vi] + np.einsum("nij,nj->ni", voxel_rots[vi], woff_k)
+        blended += w * p_k
+    return blended
+
+
 def _deform_rigid(
     *,
     voxel_pos,
@@ -59,15 +98,9 @@ def _deform_rigid(
 
         bw /= np.maximum(bw.sum(axis=1, keepdims=True), 1e-8)
 
-        blended = np.zeros((int(mask.sum()), 3), dtype=np.float32)
-        for k in range(bi.shape[1]):
-            vi = bi[:, k]
-            w = bw[:, k, None]
-            off_k = sv - vox_centers_mesh[vi]
-            woff_k = (base_rot @ off_k.T).T
-            p_k = voxel_pos[vi] + np.einsum("nij,nj->ni", voxel_rots[vi], woff_k)
-            blended += w * p_k
-        positions[mask] = blended
+        positions[mask] = _compute_blended_positions(
+            voxel_pos, voxel_rots, vox_centers_mesh, sv, bi, bw, base_rot
+        )
     else:
         world_offsets = (base_rot @ offsets[mask].T).T
         positions[mask] = voxel_pos[bv] + np.einsum(
@@ -77,6 +110,28 @@ def _deform_rigid(
     if np.any(~mask):
         positions[~mask] = base_offset
     return positions
+
+
+def _build_scalar_grid(voxel_pos, voxel_radius):
+    pad = voxel_radius * 2.0
+    mins = voxel_pos.min(axis=0) - pad
+    maxs = voxel_pos.max(axis=0) + pad
+    extent = maxs - mins
+    cell_size = max(voxel_radius * 0.6, 1e-6)
+    res = np.clip(np.ceil(extent / cell_size).astype(int), 8, 64)
+    xs = np.linspace(mins[0], maxs[0], int(res[0]))
+    ys = np.linspace(mins[1], maxs[1], int(res[1]))
+    zs = np.linspace(mins[2], maxs[2], int(res[2]))
+    spacing = (
+        float(xs[-1] - xs[0]) / max(int(res[0]) - 1, 1),
+        float(ys[-1] - ys[0]) / max(int(res[1]) - 1, 1),
+        float(zs[-1] - zs[0]) / max(int(res[2]) - 1, 1),
+    )
+    gx, gy, gz = np.meshgrid(xs, ys, zs, indexing="ij")
+    grid_pts = np.stack([gx.ravel(), gy.ravel(), gz.ravel()], axis=1)
+    dists, _ = KDTree(voxel_pos).query(grid_pts)
+    scalar = dists.reshape(int(res[0]), int(res[1]), int(res[2]))
+    return scalar, mins, spacing
 
 
 def _deform_marching_cubes(
@@ -94,38 +149,17 @@ def _deform_marching_cubes(
     split_indices=None,
     **_,
 ):
-
     finite_mask = np.all(np.isfinite(voxel_pos), axis=1)
     if not finite_mask.any():
         return np.zeros((0, 3), dtype=np.float32), np.zeros((0, 3), dtype=np.uint32)
     voxel_pos = voxel_pos[finite_mask]
     voxel_radius = float(np.abs(offsets[mask]).max()) * 1.2 if mask.any() else 0.5
-    pad = voxel_radius * 2.0
-    mins = voxel_pos.min(axis=0) - pad
-    maxs = voxel_pos.max(axis=0) + pad
-    extent = maxs - mins
-    cell_size = max(voxel_radius * 0.6, 1e-6)
-    res = np.clip(np.ceil(extent / cell_size).astype(int), 8, 64)
-    xs = np.linspace(mins[0], maxs[0], int(res[0]))
-    ys = np.linspace(mins[1], maxs[1], int(res[1]))
-    zs = np.linspace(mins[2], maxs[2], int(res[2]))
-    spacing = (
-        float(xs[-1] - xs[0]) / max(int(res[0]) - 1, 1),
-        float(ys[-1] - ys[0]) / max(int(res[1]) - 1, 1),
-        float(zs[-1] - zs[0]) / max(int(res[2]) - 1, 1),
-    )
 
-    gx, gy, gz = np.meshgrid(xs, ys, zs, indexing="ij")
-    grid_pts = np.stack([gx.ravel(), gy.ravel(), gz.ravel()], axis=1)
-    tree = KDTree(voxel_pos)
-    dists, _ = tree.query(grid_pts)
-    scalar = dists.reshape(int(res[0]), int(res[1]), int(res[2]))
-
-    level = voxel_radius
-    if scalar.min() >= level:
+    scalar, mins, spacing = _build_scalar_grid(voxel_pos, voxel_radius)
+    if scalar.min() >= voxel_radius:
         return np.zeros((0, 3), dtype=np.float32), np.zeros((0, 3), dtype=np.uint32)
 
-    verts, faces, _, _ = marching_cubes(scalar, level=level, spacing=spacing)
+    verts, faces, _, _ = marching_cubes(scalar, level=voxel_radius, spacing=spacing)
     verts = (verts + mins).astype(np.float32)
     faces = faces.astype(np.uint32)
     return verts, faces
@@ -186,23 +220,16 @@ class MeshSplitter:
         self._reach_mask = None
         self._broken_dirty = False
 
-    def _compute_voxel_centers(self, positions, mesh_verts, bindings, offsets, n_voxels):
+    def _compute_voxel_centers(
+        self, positions, mesh_verts, bindings, offsets, n_voxels
+    ):
         positions_arr = np.array(positions, dtype=np.float32)
         vox_centers_shifted = positions_arr @ self.BASE_ROT
         orig_bindings = np.array(bindings, dtype=np.int32)
         orig_offsets = np.array(offsets, dtype=np.float32).reshape(-1, 3)
-        vox_model = np.zeros((n_voxels, 3), dtype=np.float32)
-        vox_counts = np.zeros(n_voxels, dtype=np.int32)
-        bound_mask = orig_bindings >= 0
-        valid_vis = np.where(bound_mask)[0]
-        if len(valid_vis) > 0:
-            vox_ids = orig_bindings[valid_vis]
-            np.add.at(
-                vox_model, vox_ids, mesh_verts[valid_vis] - orig_offsets[valid_vis]
-            )
-            np.add.at(vox_counts, vox_ids, 1)
-        valid = vox_counts > 0
-        vox_model[valid] /= vox_counts[valid, None]
+        vox_model, valid = _compute_model_space_centers(
+            mesh_verts, orig_bindings, orig_offsets, n_voxels
+        )
         if valid.any():
             mesh_offset = (vox_centers_shifted[valid] - vox_model[valid]).mean(axis=0)
         else:
@@ -210,8 +237,7 @@ class MeshSplitter:
         vox_centers_mesh = vox_centers_shifted - mesh_offset
         vox_centers_mesh[valid] = vox_model[valid]
         self.vox_centers_mesh = vox_centers_mesh
-        vox_tree = KDTree(vox_centers_mesh)
-        return vox_tree, positions_arr
+        return KDTree(vox_centers_mesh), positions_arr
 
     def _assign_vertices_to_voxels(self, indices, mesh_verts, n_voxels, vox_tree):
         vox_centers_mesh = self.vox_centers_mesh
@@ -239,27 +265,12 @@ class MeshSplitter:
         self.split_offsets = off_1.astype(np.float32).reshape(-1, 3)
         self.split_indices = idx_1.astype(np.uint32)
         self.n_split_verts = len(self.split_bindings)
-        self._vox_to_verts = [[] for _ in range(n_voxels)]
-        valid_vi = np.where(self.split_bindings >= 0)[0]
-        if len(valid_vi) > 0:
-            bv_arr = self.split_bindings[valid_vi]
-            order = np.argsort(bv_arr, kind="stable")
-            sorted_vis = valid_vi[order]
-            sorted_bvs = bv_arr[order]
-            splits = np.searchsorted(sorted_bvs, np.arange(n_voxels + 1))
-            for bv in range(n_voxels):
-                self._vox_to_verts[bv] = sorted_vis[
-                    splits[bv] : splits[bv + 1]
-                ].tolist()
+        self._vox_to_verts = _build_vox_to_verts_index(n_voxels, self.split_bindings)
         self.split_mesh_verts = (
             self.split_offsets + vox_centers_mesh[self.split_bindings]
         )
 
-    def _compute_blend_weights(self, vox_tree, voxel_half, n_voxels):
-        K = min(4, n_voxels)
-        lbs_dists, lbs_idx = vox_tree.query(self.split_mesh_verts, k=K)
-        lbs_dists = lbs_dists.reshape(-1, K)
-        lbs_idx = lbs_idx.reshape(-1, K)
+    def _ensure_primary_in_candidates(self, lbs_idx, lbs_dists):
         primary_in_set = (lbs_idx == self.split_bindings[:, None]).any(axis=1)
         missing = ~primary_in_set
         if missing.any():
@@ -267,11 +278,27 @@ class MeshSplitter:
             mv = self.split_mesh_verts[missing]
             pv = self.vox_centers_mesh[self.split_bindings[missing]]
             lbs_dists[missing, -1] = np.linalg.norm(mv - pv, axis=1).astype(np.float32)
+
+    def _compute_blend_weights(self, vox_tree, voxel_half, n_voxels):
+        K = min(4, n_voxels)
+        lbs_dists, lbs_idx = vox_tree.query(self.split_mesh_verts, k=K)
+        lbs_dists = lbs_dists.reshape(-1, K)
+        lbs_idx = lbs_idx.reshape(-1, K)
+        self._ensure_primary_in_candidates(lbs_idx, lbs_dists)
         sigma = 2.0 * voxel_half
         lbs_w = np.exp(-(lbs_dists**2) / (2.0 * sigma**2)).astype(np.float32)
         lbs_w /= np.maximum(lbs_w.sum(axis=1, keepdims=True), 1e-8)
         self.blend_indices = lbs_idx.astype(np.int32)
         self.blend_weights = lbs_w
+
+    def _compute_rest_positions(self, positions_arr):
+        mask = self.split_bindings >= 0
+        bv = self.split_bindings
+        init_pos = np.empty((self.n_split_verts, 3), dtype=np.float32)
+        init_pos[mask] = positions_arr[bv[mask]] + self.local_offsets[mask]
+        if np.any(~mask):
+            init_pos[~mask] = self.BASE_OFFSET
+        return init_pos
 
     def _initialize_rest_geometry(self, positions_arr):
         self._cached_out = None
@@ -279,14 +306,9 @@ class MeshSplitter:
         self._last_voxel_slice = None
         self.gpu_dirty = True
         self.local_offsets = (self.BASE_ROT @ self.split_offsets.T).T
-        _mask = self.split_bindings >= 0
-        _bv = self.split_bindings
-        _init_pos = np.empty((self.n_split_verts, 3), dtype=np.float32)
-        _init_pos[_mask] = positions_arr[_bv[_mask]] + self.local_offsets[_mask]
-        if np.any(~_mask):
-            _init_pos[~_mask] = self.BASE_OFFSET
+        init_pos = self._compute_rest_positions(positions_arr)
         self.rest_normals = _compute_normals(
-            _init_pos, self.split_indices.reshape(-1, 3), self.n_split_verts
+            init_pos, self.split_indices.reshape(-1, 3), self.n_split_verts
         )
         self.current_index_count = len(self.split_indices)
         self._update_reach_mask()

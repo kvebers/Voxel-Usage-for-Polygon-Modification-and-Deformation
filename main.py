@@ -84,6 +84,28 @@ wp.init()
 device = wp.get_cuda_device()
 
 
+def _build_greedy_topology(active_grid):
+    blocks = greedy_merge_grid(active_grid)
+    block_centers, block_halves_voxel, neighbor_pairs, joint_voxel_offsets = (
+        build_block_topology(blocks, active_grid.shape)
+    )
+    coords = [tuple(float(v) for v in c) for c in block_centers]
+    return coords, {}, neighbor_pairs, block_halves_voxel, joint_voxel_offsets
+
+
+def _build_regular_topology(active_grid):
+    filled = np.argwhere(active_grid > 0)
+    coords = [(int(ix), int(iy), int(iz)) for ix, iy, iz in filled]
+    coord_to_idx = {c: i for i, c in enumerate(coords)}
+    neighbor_pairs = []
+    for ix, iy, iz in coords:
+        for dx, dy, dz in [(1, 0, 0), (0, 1, 0), (0, 0, 1)]:
+            nb = (ix + dx, iy + dy, iz + dz)
+            if nb in coord_to_idx:
+                neighbor_pairs.append((coord_to_idx[(ix, iy, iz)], coord_to_idx[nb]))
+    return coords, coord_to_idx, neighbor_pairs, None, None
+
+
 def voxelize_and_build_topology(
     mesh_verts,
     mesh_indices,
@@ -105,32 +127,13 @@ def voxelize_and_build_topology(
         active_grid = repair_isolated_voxels(active_grid, grid_filled)
 
     if greedy_merge:
-        blocks = greedy_merge_grid(active_grid)
-        block_centers, block_halves_voxel, neighbor_pairs, joint_voxel_offsets = (
-            build_block_topology(blocks, active_grid.shape)
+        coords, coord_to_idx, neighbor_pairs, block_halves_voxel, joint_voxel_offsets = (
+            _build_greedy_topology(active_grid)
         )
-        coords = [tuple(float(v) for v in c) for c in block_centers]
-        coord_to_idx = {}
-        return (
-            grid_filled,
-            grid_hollow,
-            active_grid,
-            coords,
-            coord_to_idx,
-            neighbor_pairs,
-            block_halves_voxel,
-            joint_voxel_offsets,
+    else:
+        coords, coord_to_idx, neighbor_pairs, block_halves_voxel, joint_voxel_offsets = (
+            _build_regular_topology(active_grid)
         )
-
-    filled = np.argwhere(active_grid > 0)
-    coords = [(int(ix), int(iy), int(iz)) for ix, iy, iz in filled]
-    coord_to_idx = {c: i for i, c in enumerate(coords)}
-    neighbor_pairs = []
-    for ix, iy, iz in coords:
-        for dx, dy, dz in [(1, 0, 0), (0, 1, 0), (0, 0, 1)]:
-            nb = (ix + dx, iy + dy, iz + dz)
-            if nb in coord_to_idx:
-                neighbor_pairs.append((coord_to_idx[(ix, iy, iz)], coord_to_idx[nb]))
     return (
         grid_filled,
         grid_hollow,
@@ -138,8 +141,8 @@ def voxelize_and_build_topology(
         coords,
         coord_to_idx,
         neighbor_pairs,
-        None,
-        None,
+        block_halves_voxel,
+        joint_voxel_offsets,
     )
 
 
@@ -168,6 +171,16 @@ def _compute_voxel_geometry(mesh_verts, resolution, cfg):
     return extent, usable, voxel_size, half, grid_min
 
 
+def _apply_position_offsets(raw, cfg, half, world_offset):
+    gnd = cfg.ground
+    ground_top = gnd.position[2] + gnd.half_extents[2]
+    z_offset = ground_top - raw[:, 2].min() + half
+    ox, oy, oz = world_offset
+    raw[:, 0] += ox
+    raw[:, 1] += oy
+    raw[:, 2] += z_offset + oz
+
+
 def _compute_voxel_positions(
     coords, resolution, cfg, mesh_verts, half, world_offset=(0.0, 0.0, 0.0)
 ):
@@ -184,13 +197,7 @@ def _compute_voxel_positions(
     raw[:, 0] = p[:, 0]
     raw[:, 1] = -p[:, 2]
     raw[:, 2] = p[:, 1]
-    gnd = cfg.ground
-    ground_top = gnd.position[2] + gnd.half_extents[2]
-    z_offset = ground_top - raw[:, 2].min() + half
-    ox, oy, oz = world_offset
-    raw[:, 0] += ox
-    raw[:, 1] += oy
-    raw[:, 2] += z_offset + oz
+    _apply_position_offsets(raw, cfg, half, world_offset)
     return raw
 
 
@@ -209,8 +216,11 @@ def _add_ground(builder, cfg):
 
 def _add_voxel_bodies(builder, positions, half, cfg, block_halves_world=None):
     voxel_body_start = builder.body_count
+    vox = cfg.voxels
     voxel_cfg = newton.ModelBuilder.ShapeConfig(
-        density=cfg.voxels.density, kf=1e4, mu=1.0
+        density=vox.density,
+        kf=getattr(vox, "kf", 1e4),
+        mu=getattr(vox, "mu", 1.0),
     )
     q = wp.quat_identity()
     body_idx = voxel_body_start
@@ -262,34 +272,27 @@ def _add_ball(builder, positions, half, extent, cfg):
     return ball_bodies, ball_radius
 
 
+def _compute_joint_offsets(pairs, positions, joint_world_offsets):
+    if joint_world_offsets is not None:
+        wo = np.asarray(joint_world_offsets, dtype=np.float64)
+        return wo[:, 0], wo[:, 1]
+    oa_all = (positions[pairs[:, 1]] - positions[pairs[:, 0]]) * 0.5
+    return oa_all, -oa_all
+
+
 def _add_joints(
     builder, neighbor_pairs, positions, voxel_body_start, joint_world_offsets=None
 ):
     if not neighbor_pairs:
         return
     q = wp.quat_identity()
-    pairs = np.asarray(neighbor_pairs, dtype=np.int32)  # (N, 2)
-    n = len(pairs)
-    if joint_world_offsets is not None:
-        wo = np.asarray(joint_world_offsets, dtype=np.float64)  # (N, 2, 3)
-        oa_all = wo[:, 0]
-        ob_all = wo[:, 1]
-    else:
-        oa_all = (positions[pairs[:, 1]] - positions[pairs[:, 0]]) * 0.5  # (N, 3)
-        ob_all = -oa_all
-    for ji in range(n):
+    pairs = np.asarray(neighbor_pairs, dtype=np.int32)
+    oa_all, ob_all = _compute_joint_offsets(pairs, positions, joint_world_offsets)
+    for ji in range(len(pairs)):
         ba = voxel_body_start + int(pairs[ji, 0])
         bb = voxel_body_start + int(pairs[ji, 1])
-        ox_a, oy_a, oz_a = (
-            float(oa_all[ji, 0]),
-            float(oa_all[ji, 1]),
-            float(oa_all[ji, 2]),
-        )
-        ox_b, oy_b, oz_b = (
-            float(ob_all[ji, 0]),
-            float(ob_all[ji, 1]),
-            float(ob_all[ji, 2]),
-        )
+        ox_a, oy_a, oz_a = float(oa_all[ji, 0]), float(oa_all[ji, 1]), float(oa_all[ji, 2])
+        ox_b, oy_b, oz_b = float(ob_all[ji, 0]), float(ob_all[ji, 1]), float(ob_all[ji, 2])
         builder.add_joint_fixed(
             ba,
             bb,
@@ -313,25 +316,20 @@ def _create_solver(model, cfg):
     )
 
 
+def _obj_cfg_from_spec(o, cfg):
+    return SimpleNamespace(
+        path=o.path,
+        offset=list(o.offset) if hasattr(o, "offset") else [0.0, 0.0, 0.0],
+        color=list(o.color) if hasattr(o, "color") else list(cfg.render.mesh_color),
+        resolution=o.resolution if hasattr(o, "resolution") else cfg.mesh.resolution,
+        rot=list(o.rot) if hasattr(o, "rot") else None,
+        scale=float(o.scale) if hasattr(o, "scale") else 1.0,
+    )
+
+
 def get_object_configs(cfg):
     if hasattr(cfg, "objects") and cfg.objects:
-        objs = []
-        for o in cfg.objects:
-            objs.append(
-                SimpleNamespace(
-                    path=o.path,
-                    offset=list(o.offset) if hasattr(o, "offset") else [0.0, 0.0, 0.0],
-                    color=list(o.color)
-                    if hasattr(o, "color")
-                    else list(cfg.render.mesh_color),
-                    resolution=o.resolution
-                    if hasattr(o, "resolution")
-                    else cfg.mesh.resolution,
-                    rot=list(o.rot) if hasattr(o, "rot") else None,
-                    scale=float(o.scale) if hasattr(o, "scale") else 1.0,
-                )
-            )
-        return objs
+        return [_obj_cfg_from_spec(o, cfg) for o in cfg.objects]
     return [
         SimpleNamespace(
             path=cfg.mesh.path,
@@ -342,17 +340,22 @@ def get_object_configs(cfg):
     ]
 
 
+def _load_and_preprocess_mesh(obj_cfg):
+    vertices, indices = load_obj(obj_cfg.path)
+    center = (vertices.min(axis=0) + vertices.max(axis=0)) * 0.5
+    verts = vertices - center
+    if obj_cfg.rot is not None:
+        verts = (np.array(obj_cfg.rot, dtype=np.float32) @ verts.T).T
+    if obj_cfg.scale != 1.0:
+        verts = verts * obj_cfg.scale
+    return verts, indices
+
+
 def load_and_voxelize_one(cfg, obj_cfg, ctx=None):
     fill_mode = bool(getattr(cfg.voxels, "fill_mode", True))
     ensure_connected = bool(getattr(cfg.voxels, "ensure_connected", False))
     greedy_merge = bool(getattr(cfg.voxels, "greedy_merge", False))
-    vertices, indices = load_obj(obj_cfg.path)
-    center = (vertices.min(axis=0) + vertices.max(axis=0)) * 0.5
-    centered_verts = vertices - center
-    if obj_cfg.rot is not None:
-        centered_verts = (np.array(obj_cfg.rot, dtype=np.float32) @ centered_verts.T).T
-    if obj_cfg.scale != 1.0:
-        centered_verts = centered_verts * obj_cfg.scale
+    centered_verts, indices = _load_and_preprocess_mesh(obj_cfg)
     (
         _,
         _,
@@ -385,6 +388,35 @@ def load_and_voxelize_one(cfg, obj_cfg, ctx=None):
     }
 
 
+def _scale_greedy_to_world(block_halves_voxel, joint_voxel_offsets, voxel_size):
+    block_halves_world = None
+    joint_world_offsets = None
+    if block_halves_voxel is not None:
+        block_halves_world = [
+            (hx * voxel_size, hz * voxel_size, hy * voxel_size)
+            for hx, hy, hz in block_halves_voxel
+        ]
+    if joint_voxel_offsets is not None:
+        joint_world_offsets = [
+            (
+                (oa[0] * voxel_size, -oa[2] * voxel_size, oa[1] * voxel_size),
+                (ob[0] * voxel_size, -ob[2] * voxel_size, ob[1] * voxel_size),
+            )
+            for oa, ob in joint_voxel_offsets
+        ]
+    return block_halves_world, joint_world_offsets
+
+
+def _finalize_model(builder, cfg):
+    builder.color()
+    model = builder.finalize(device=device)
+    state_0 = model.state()
+    state_1 = model.state()
+    newton.eval_fk(model, model.joint_q, model.joint_qd, state_0)
+    solver = _create_solver(model, cfg)
+    return model, state_0, state_1, solver
+
+
 def build_scene_multi(all_obj_data, cfg):
     builder = newton.ModelBuilder()
     _add_ground(builder, cfg)
@@ -399,8 +431,6 @@ def build_scene_multi(all_obj_data, cfg):
         coords = obj_data["coords"]
         coord_to_idx = obj_data["coord_to_idx"]
         neighbor_pairs = obj_data["neighbor_pairs"]
-        block_halves_voxel = obj_data["block_halves_voxel"]
-        joint_voxel_offsets = obj_data["joint_voxel_offsets"]
         resolution = obj_data["resolution"]
         world_offset = tuple(obj_data["offset"])
 
@@ -416,26 +446,13 @@ def build_scene_multi(all_obj_data, cfg):
         bindings, offsets = bind_vertices_to_voxels(
             mesh_verts, coords, coord_to_idx, grid_min, voxel_size, resolution
         )
-        block_halves_world = None
-        joint_world_offsets = None
-        if block_halves_voxel is not None:
-            block_halves_world = [
-                (hx * voxel_size, hz * voxel_size, hy * voxel_size)
-                for hx, hy, hz in block_halves_voxel
-            ]
-        if joint_voxel_offsets is not None:
-            joint_world_offsets = [
-                (
-                    (oa[0] * voxel_size, -oa[2] * voxel_size, oa[1] * voxel_size),
-                    (ob[0] * voxel_size, -ob[2] * voxel_size, ob[1] * voxel_size),
-                )
-                for oa, ob in joint_voxel_offsets
-            ]
+        block_halves_world, joint_world_offsets = _scale_greedy_to_world(
+            obj_data["block_halves_voxel"], obj_data["joint_voxel_offsets"], voxel_size
+        )
 
         voxel_body_start = _add_voxel_bodies(
             builder, positions, half, cfg, block_halves_world=block_halves_world
         )
-        print(f"[build_scene] Object {len(per_obj) + 1}: {len(positions)} voxels")
         if cfg.joints.enabled:
             _add_joints(
                 builder,
@@ -465,12 +482,7 @@ def build_scene_multi(all_obj_data, cfg):
     all_positions = np.concatenate(all_positions_list, axis=0)
     ball_bodies, ball_radius = _add_ball(builder, all_positions, half0, extent0, cfg)
 
-    builder.color()
-    model = builder.finalize(device=device)
-    state_0 = model.state()
-    state_1 = model.state()
-    newton.eval_fk(model, model.joint_q, model.joint_qd, state_0)
-    solver = _create_solver(model, cfg)
+    model, state_0, state_1, solver = _finalize_model(builder, cfg)
 
     for obj in per_obj:
         obj["solver"] = solver
@@ -534,18 +546,40 @@ def init_window(cfg):
     return width, height
 
 
+def _yaw_pitch_from_direction(d):
+    dist = float(np.linalg.norm(d))
+    if dist < 1e-6:
+        return 0.0, 0.0
+    n = d / dist
+    pitch = math.degrees(-math.asin(float(np.clip(n[2], -1.0, 1.0))))
+    yaw = math.degrees(math.atan2(float(-n[1]), float(-n[0])))
+    return yaw, pitch
+
+
 def init_camera(cfg):
     ccfg = cfg.camera
-    pos = getattr(ccfg, "position", None)
+    target = np.array(ccfg.target, dtype=np.float32)
+    pos_cfg = getattr(ccfg, "position", None)
+    if pos_cfg is not None:
+        pos = np.array(pos_cfg, dtype=np.float32)
+    else:
+        yaw_r = math.radians(ccfg.yaw)
+        pitch_r = math.radians(ccfg.pitch)
+        d = ccfg.distance
+        pos = target + np.array([
+            d * math.cos(pitch_r) * math.cos(yaw_r),
+            d * math.cos(pitch_r) * math.sin(yaw_r),
+            d * math.sin(pitch_r),
+        ], dtype=np.float32)
+    yaw, pitch = _yaw_pitch_from_direction(target - pos)
     return {
-        "dist": ccfg.distance,
-        "yaw": ccfg.yaw,
-        "pitch": ccfg.pitch,
-        "target": np.array(ccfg.target, dtype=np.float32),
+        "position": pos,
+        "yaw": yaw,
+        "pitch": pitch,
         "fov": ccfg.fov,
         "near": ccfg.near,
         "far": ccfg.far,
-        "position": np.array(pos, dtype=np.float32) if pos is not None else None,
+        "speed": 0.1,
     }
 
 
@@ -568,6 +602,45 @@ def init_sim_state(cfg):
     }
 
 
+def _handle_key_event(event, sim):
+    if event.key == K_ESCAPE:
+        return False
+    elif event.key == K_c:
+        sim["simulating"] = not sim["simulating"]
+        print(f"Physics {'started' if sim['simulating'] else 'stopped'}")
+    elif event.key == K_v:
+        sim["render_mode"] = "voxel" if sim["render_mode"] == "mesh" else "mesh"
+        print(f"Render mode: {sim['render_mode']}")
+    elif event.key in (K_0, K_1, K_2, K_3, K_4):
+        new_mode = event.key - K_0
+        sim["force_mode"] = 0 if sim["force_mode"] == new_mode else new_mode
+    elif event.key in (K_EQUALS, K_PLUS):
+        sim["force_strength"] *= 2.0
+        print(f"Force strength: {sim['force_strength']:.1f} N")
+    elif event.key == K_MINUS:
+        sim["force_strength"] = max(1.0, sim["force_strength"] / 2.0)
+        print(f"Force strength: {sim['force_strength']:.1f} N")
+    return True
+
+
+def _handle_mouse_event(event, cam, dragging):
+    if event.type == MOUSEBUTTONDOWN:
+        if event.button == 1:
+            return True
+        elif event.button == 4:
+            cam["speed"] = min(10.0, cam["speed"] * 1.5)
+        elif event.button == 5:
+            cam["speed"] = max(0.01, cam["speed"] / 1.5)
+    elif event.type == MOUSEBUTTONUP:
+        if event.button == 1:
+            return False
+    elif event.type == MOUSEMOTION and dragging:
+        dx, dy = event.rel
+        cam["yaw"] += dx * 0.3
+        cam["pitch"] = max(-89, min(89, cam["pitch"] - dy * 0.3))
+    return dragging
+
+
 def handle_events(cam, sim, width, height):
     running = True
     mouse_dragging = getattr(handle_events, "_dragging", False)
@@ -576,68 +649,55 @@ def handle_events(cam, sim, width, height):
         if event.type == QUIT:
             running = False
         elif event.type == KEYDOWN:
-            if event.key == K_ESCAPE:
+            if not _handle_key_event(event, sim):
                 running = False
-            elif event.key == K_c:
-                sim["simulating"] = not sim["simulating"]
-                print(f"Physics {'started' if sim['simulating'] else 'stopped'}")
-            elif event.key == K_v:
-                sim["render_mode"] = "voxel" if sim["render_mode"] == "mesh" else "mesh"
-                print(f"Render mode: {sim['render_mode']}")
-            elif event.key in (K_0, K_1, K_2, K_3, K_4):
-                new_mode = event.key - K_0
-                sim["force_mode"] = 0 if sim["force_mode"] == new_mode else new_mode
-            elif event.key == K_EQUALS or event.key == K_PLUS:
-                sim["force_strength"] *= 2.0
-                print(f"Force strength: {sim['force_strength']:.1f} N")
-            elif event.key == K_MINUS:
-                sim["force_strength"] = max(1.0, sim["force_strength"] / 2.0)
-                print(f"Force strength: {sim['force_strength']:.1f} N")
         elif event.type == VIDEORESIZE:
             width, height = event.w, event.h
             pygame.display.set_mode((width, height), DOUBLEBUF | OPENGL | RESIZABLE)
             glViewport(0, 0, width, height)
-        elif event.type == MOUSEBUTTONDOWN:
-            if event.button == 1:
-                mouse_dragging = True
-            elif event.button == 4:
-                cam["dist"] = max(1.0, cam["dist"] - 0.5)
-            elif event.button == 5:
-                cam["dist"] += 0.5
-        elif event.type == MOUSEBUTTONUP:
-            if event.button == 1:
-                mouse_dragging = False
-        elif event.type == MOUSEMOTION:
-            if mouse_dragging:
-                dx, dy = event.rel
-                cam["yaw"] += dx * 0.3
-                cam["pitch"] = max(-89, min(89, cam["pitch"] - dy * 0.3))
+        elif event.type in (MOUSEBUTTONDOWN, MOUSEBUTTONUP, MOUSEMOTION):
+            mouse_dragging = _handle_mouse_event(event, cam, mouse_dragging)
 
     handle_events._dragging = mouse_dragging
     return running, width, height
 
 
-def pan_camera(cam):
-    keys = pygame.key.get_pressed()
-    if not any([keys[K_w], keys[K_s], keys[K_a], keys[K_d], keys[K_q], keys[K_e]]):
-        return
-    speed = cam["dist"] * 0.02
-    yaw_r = math.radians(cam["yaw"])
+def _camera_basis_vectors(yaw_deg):
+    yaw_r = math.radians(yaw_deg)
     fwd = np.array([-math.cos(yaw_r), -math.sin(yaw_r), 0.0], np.float32)
     right = np.array([-math.sin(yaw_r), math.cos(yaw_r), 0.0], np.float32)
     up = np.array([0.0, 0.0, 1.0], np.float32)
-    if keys[K_w]:
-        cam["target"] += fwd * speed
-    if keys[K_s]:
-        cam["target"] -= fwd * speed
-    if keys[K_d]:
-        cam["target"] += right * speed
-    if keys[K_a]:
-        cam["target"] -= right * speed
-    if keys[K_e]:
-        cam["target"] += up * speed
-    if keys[K_q]:
-        cam["target"] -= up * speed
+    return fwd, right, up
+
+
+def movement(cam):
+    keys = pygame.key.get_pressed()
+    if not any([keys[K_w], keys[K_s], keys[K_a], keys[K_d], keys[K_q], keys[K_e]]):
+        return
+    speed = cam["speed"]
+    fwd, right, up = _camera_basis_vectors(cam["yaw"])
+    if keys[K_w]: cam["position"] += fwd * speed
+    if keys[K_s]: cam["position"] -= fwd * speed
+    if keys[K_d]: cam["position"] += right * speed
+    if keys[K_a]: cam["position"] -= right * speed
+    if keys[K_e]: cam["position"] += up * speed
+    if keys[K_q]: cam["position"] -= up * speed
+
+
+def _record_substep_stats(profiler, t_forces, t_collision, t_solver, t_joints, sim, joint_breakers):
+    profiler.record("forces", t_forces)
+    profiler.record("collision", t_collision)
+    profiler.record("solver", t_solver)
+    profiler.record("joints", t_joints)
+    profiler.count("substeps", sim["substeps"])
+    profiler.count("active_joints", sum(int(np.sum(~jb.broken)) for jb in joint_breakers))
+    profiler.count("broken_joints", sum(int(np.sum(jb.broken)) for jb in joint_breakers))
+
+
+def _sync_mesh_splitters(joint_breakers, mesh_splitters):
+    for jb, ms in zip(joint_breakers, mesh_splitters):
+        if np.any(jb.broken):
+            ms.set_broken(jb.broken)
 
 
 def step_simulation(
@@ -683,54 +743,45 @@ def step_simulation(
 
         if timing:
             _t = time.perf_counter()
-        body_torques = (
-            solver.body_torques.numpy()
-        )  # one GPU read shared across all JointBreakers
+        body_torques = solver.body_torques.numpy()  # one GPU read shared across all JointBreakers
         for jb in joint_breakers:
             jb.update(model, sim["sim_dt"], device, body_torques=body_torques)
         if timing:
             t_joints += time.perf_counter() - _t
 
     if profiler is not None:
-        profiler.record("forces", t_forces)
-        profiler.record("collision", t_collision)
-        profiler.record("solver", t_solver)
-        profiler.record("joints", t_joints)
-        profiler.count("substeps", sim["substeps"])
-        profiler.count(
-            "active_joints", sum(int(np.sum(~jb.broken)) for jb in joint_breakers)
-        )
-        profiler.count(
-            "broken_joints", sum(int(np.sum(jb.broken)) for jb in joint_breakers)
-        )
-
+        _record_substep_stats(profiler, t_forces, t_collision, t_solver, t_joints, sim, joint_breakers)
     scene["state_0"], scene["state_1"] = state_0, state_1
     sim["sim_time"] += sim["frame_dt"]
     sim["frame_count"] += 1
+    _sync_mesh_splitters(joint_breakers, mesh_splitters)
 
-    for jb, ms in zip(joint_breakers, mesh_splitters):
-        if np.any(jb.broken):
-            ms.set_broken(jb.broken)
+
+def _compute_eye_position(cam):
+    return cam["position"]
 
 
 def compute_view_projection(cam, width, height):
     aspect = width / max(height, 1)
     proj = perspective_matrix(cam["fov"], aspect, cam["near"], cam["far"])
-    if cam.get("position") is not None:
-        eye = cam["position"]
-    else:
-        yaw_r = math.radians(cam["yaw"])
-        pitch_r = math.radians(cam["pitch"])
-        eye = np.array(
-            [
-                cam["target"][0] + cam["dist"] * math.cos(pitch_r) * math.cos(yaw_r),
-                cam["target"][1] + cam["dist"] * math.cos(pitch_r) * math.sin(yaw_r),
-                cam["target"][2] + cam["dist"] * math.sin(pitch_r),
-            ],
-            dtype=np.float32,
-        )
-    view = look_at_matrix(eye, cam["target"], np.array([0, 0, 1], np.float32))
+    eye = cam["position"]
+    yaw_r = math.radians(cam["yaw"])
+    pitch_r = math.radians(cam["pitch"])
+    look_fwd = np.array([
+        -math.cos(pitch_r) * math.cos(yaw_r),
+        -math.cos(pitch_r) * math.sin(yaw_r),
+        -math.sin(pitch_r),
+    ], dtype=np.float32)
+    view = look_at_matrix(eye, eye + look_fwd, np.array([0, 0, 1], np.float32))
     return proj, view, eye
+
+
+def _fix_state_nans(state, nan_idx, last_good, positions):
+    positions[nan_idx] = last_good[nan_idx]
+    state.body_q = wp.array(positions, dtype=state.body_q.dtype, device=device)
+    qd = state.body_qd.numpy()
+    qd[nan_idx] = 0.0
+    state.body_qd = wp.array(qd, dtype=state.body_qd.dtype, device=device)
 
 
 def _recover_nan_bodies(scene, transforms):
@@ -738,26 +789,35 @@ def _recover_nan_bodies(scene, transforms):
     if finite.all():
         scene["_last_valid_body_q"] = transforms.copy()
         return False
-
     last_good = scene.get("_last_valid_body_q")
     if last_good is None:
         return False
-
     nan_idx = np.where(~finite)[0]
-    transforms[nan_idx] = last_good[nan_idx]
-    st0 = scene["state_0"]
-    st0.body_q = wp.array(transforms, dtype=st0.body_q.dtype, device=device)
-    qd0 = st0.body_qd.numpy()
-    qd0[nan_idx] = 0.0
-    st0.body_qd = wp.array(qd0, dtype=st0.body_qd.dtype, device=device)
-    st1 = scene["state_1"]
-    q1 = st1.body_q.numpy()
-    q1[nan_idx] = last_good[nan_idx]
-    st1.body_q = wp.array(q1, dtype=st1.body_q.dtype, device=device)
-    qd1 = st1.body_qd.numpy()
-    qd1[nan_idx] = 0.0
-    st1.body_qd = wp.array(qd1, dtype=st1.body_qd.dtype, device=device)
+    _fix_state_nans(scene["state_0"], nan_idx, last_good, transforms)
+    _fix_state_nans(scene["state_1"], nan_idx, last_good, scene["state_1"].body_q.numpy())
     return True
+
+
+def _render_single_object(obj, transforms, sim, proj, view, eye):
+    obj_scene = obj["scene"]
+    obj_renderer = obj["obj_renderer"]
+    ms = obj["mesh_splitter"]
+    vbs = obj_scene["voxel_body_start"]
+    nv = obj_scene["voxel_count"]
+    if sim["render_mode"] == "mesh":
+        _t = time.perf_counter()
+        ms.deform_split_mesh(transforms, vbs, nv)
+        t_deform = time.perf_counter() - _t
+        obj_renderer.update_voxel_transforms(ms.last_voxel_slice)
+        obj_renderer.draw_mesh_mode(
+            proj, view, eye, tuple(obj["color"]), index_count=ms.current_index_count
+        )
+        return t_deform, ms.n_split_verts, ms.current_index_count // 3
+    else:
+        obj_renderer.update_voxel_instances(transforms, vbs)
+        obj_renderer.update_voxel_colors(obj["joint_breaker"].get_voxel_colors())
+        obj_renderer.draw_voxels(proj, view, eye)
+        return 0.0, 0, 0
 
 
 def render_frame(renderer, scene, sim, obj_list, proj, view, eye, cfg, profiler=None):
@@ -769,33 +829,14 @@ def render_frame(renderer, scene, sim, obj_list, proj, view, eye, cfg, profiler=
     n_verts_deformed = 0
     n_faces_rendered = 0
     for obj in obj_list:
-        obj_scene = obj["scene"]
-        obj_renderer = obj["obj_renderer"]
-        color = tuple(obj["color"])
-        ms = obj["mesh_splitter"]
-        jb = obj["joint_breaker"]
-        vbs = obj_scene["voxel_body_start"]
-        nv = obj_scene["voxel_count"]
-        if sim["render_mode"] == "mesh":
-            _t = time.perf_counter()
-            ms.deform_split_mesh(transforms, vbs, nv)
-            t_deform += time.perf_counter() - _t
-            n_verts_deformed += ms.n_split_verts
-            n_faces_rendered += ms.current_index_count // 3
-            obj_renderer.update_voxel_transforms(ms.last_voxel_slice)
-            obj_renderer.draw_mesh_mode(
-                proj, view, eye, color, index_count=ms.current_index_count
-            )
-        else:
-            obj_renderer.update_voxel_instances(transforms, vbs)
-            obj_renderer.update_voxel_colors(jb.get_voxel_colors())
-            obj_renderer.draw_voxels(proj, view, eye)
-
+        td, nv, nf = _render_single_object(obj, transforms, sim, proj, view, eye)
+        t_deform += td
+        n_verts_deformed += nv
+        n_faces_rendered += nf
     if profiler is not None:
         profiler.record("mesh_deform", t_deform)
         profiler.count("verts_deformed", n_verts_deformed)
         profiler.count("faces_rendered", n_faces_rendered)
-
     renderer.update_ball_instances(
         transforms, scene["ball_bodies"], scene["ball_radius"]
     )
@@ -821,12 +862,26 @@ def _load_and_build_scene(scene_file, setup):
     return cfg, all_obj_data, scene
 
 
+def _create_force_applier(obj_scene, cfg):
+    el_cfg = getattr(cfg, "elasticity", None)
+    half = obj_scene["half"]
+    voxel_mass = cfg.voxels.density * 8.0 * half**3
+    return ForceApplier(
+        obj_scene["positions"],
+        obj_scene["voxel_body_start"],
+        obj_scene["voxel_count"],
+        stiffness=el_cfg.stiffness if el_cfg else 0.0,
+        damping=el_cfg.damping if el_cfg else 0.0,
+        voxel_mass=voxel_mass,
+        neighbor_pairs=obj_scene["neighbor_pairs"],
+    )
+
+
 def _create_per_object_components(all_obj_data, scene, cfg):
     obj_list = []
     joint_breakers = []
     mesh_splitters = []
     force_appliers = []
-    el_cfg = getattr(cfg, "elasticity", None)
     for obj_data, obj_scene in zip(all_obj_data, scene["objects"]):
         jb = create_joint_breaker(obj_scene, scene["model"], cfg)
         ms = create_mesh_splitter(
@@ -837,17 +892,6 @@ def _create_per_object_components(all_obj_data, scene, cfg):
             cfg,
         )
         ms.set_broken(jb.broken)
-        _half = obj_scene["half"]
-        _voxel_mass = cfg.voxels.density * 8.0 * _half**3
-        fa = ForceApplier(
-            obj_scene["positions"],
-            obj_scene["voxel_body_start"],
-            obj_scene["voxel_count"],
-            stiffness=el_cfg.stiffness if el_cfg else 0.0,
-            damping=el_cfg.damping if el_cfg else 0.0,
-            voxel_mass=_voxel_mass,
-            neighbor_pairs=obj_scene["neighbor_pairs"],
-        )
         obj_list.append(
             {
                 "scene": obj_scene,
@@ -858,7 +902,7 @@ def _create_per_object_components(all_obj_data, scene, cfg):
         )
         joint_breakers.append(jb)
         mesh_splitters.append(ms)
-        force_appliers.append(fa)
+        force_appliers.append(_create_force_applier(obj_scene, cfg))
     return obj_list, joint_breakers, mesh_splitters, force_appliers
 
 
@@ -880,9 +924,27 @@ def _init_renderer(scene, obj_list, all_obj_data, cfg):
     return renderer, width, height
 
 
+def _update_recorder(recorder, sim, was_simulating):
+    if recorder and not recorder.active and sim["simulating"] and not was_simulating:
+        recorder.start()
+    elif recorder and recorder.active and not sim["simulating"] and was_simulating:
+        recorder.stop()
+
+
 def _run_game_loop(
-    scene, sim, cam, cfg, obj_list, joint_breakers, mesh_splitters, force_appliers,
-    renderer, profiler, recorder, width, height
+    scene,
+    sim,
+    cam,
+    cfg,
+    obj_list,
+    joint_breakers,
+    mesh_splitters,
+    force_appliers,
+    renderer,
+    profiler,
+    recorder,
+    width,
+    height,
 ):
     clock = pygame.time.Clock()
     was_simulating = sim["simulating"]
@@ -891,27 +953,27 @@ def _run_game_loop(
         with profiler.section("frame"):
             with profiler.section("events"):
                 running, width, height = handle_events(cam, sim, width, height)
-                pan_camera(cam)
-            if recorder and not recorder.active and sim["simulating"] and not was_simulating:
-                recorder.start()
-            elif recorder and recorder.active and not sim["simulating"] and was_simulating:
-                recorder.stop()
+                movement(cam)
+            _update_recorder(recorder, sim, was_simulating)
             was_simulating = sim["simulating"]
-
             if sim["simulating"]:
                 with profiler.section("simulation"):
                     step_simulation(
-                        scene, sim, joint_breakers, mesh_splitters, force_appliers, profiler
+                        scene,
+                        sim,
+                        joint_breakers,
+                        mesh_splitters,
+                        force_appliers,
+                        profiler,
                     )
-
             proj, view, eye = compute_view_projection(cam, width, height)
-
             with profiler.section("render"):
-                render_frame(renderer, scene, sim, obj_list, proj, view, eye, cfg, profiler)
+                render_frame(
+                    renderer, scene, sim, obj_list, proj, view, eye, cfg, profiler
+                )
             if recorder and recorder.active:
                 recorder.write_frame(width, height)
             pygame.display.flip()
-
         clock.tick(sim["fps"])
     if recorder and recorder.active:
         recorder.stop()
@@ -920,24 +982,30 @@ def _run_game_loop(
 def main(scene_file: str = "scene.json", profile: bool = False, record: str = None):
     setup = Profiler() if profile else NullProfiler()
     profiler = Profiler() if profile else NullProfiler()
-
     cfg, all_obj_data, scene = _load_and_build_scene(scene_file, setup)
-
     with setup.section("create_components"):
         obj_list, joint_breakers, mesh_splitters, force_appliers = (
             _create_per_object_components(all_obj_data, scene, cfg)
         )
-
     with setup.section("init_renderer"):
         renderer, width, height = _init_renderer(scene, obj_list, all_obj_data, cfg)
-
     cam = init_camera(cfg)
     sim = init_sim_state(cfg)
     recorder = VideoRecorder(record, width, height, sim["fps"]) if record else None
-
     _run_game_loop(
-        scene, sim, cam, cfg, obj_list, joint_breakers, mesh_splitters, force_appliers,
-        renderer, profiler, recorder, width, height
+        scene,
+        sim,
+        cam,
+        cfg,
+        obj_list,
+        joint_breakers,
+        mesh_splitters,
+        force_appliers,
+        renderer,
+        profiler,
+        recorder,
+        width,
+        height,
     )
 
     setup.save_summary_csv("profile_setup.csv")
@@ -951,19 +1019,19 @@ if __name__ == "__main__":
         "scene",
         nargs="?",
         default="scene.jsonc",
-        help="Scene config file to load (default: scene.jsonc)",
+        help="Scene config",
     )
     parser.add_argument(
         "--profile",
         action="store_true",
-        help="Collect timing and operation counts; write CSVs on exit.",
+        help="Collect data",
     )
     parser.add_argument(
         "--record",
         nargs="?",
         const=True,
         metavar="OUTPUT.mp4",
-        help="Record to video when play is pressed (default: <scene>.mp4)",
+        help="Record video",
     )
     args = parser.parse_args()
     if args.record is True:

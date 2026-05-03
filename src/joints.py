@@ -19,6 +19,34 @@ def health_to_color(t):
         return (0.2 + s * 0.15, 0.85 - s * 0.15, 0.8 + s * 0.15)
 
 
+def _health_to_colors(t):
+    t = np.asarray(t, dtype=np.float32)
+    r = np.empty_like(t)
+    g = np.empty_like(t)
+    b = np.empty_like(t)
+
+    m = t <= 0.0
+    r[m], g[m], b[m] = 0.9, 0.15, 0.1
+
+    m = (t > 0.0) & (t <= 0.25)
+    s = t[m] / 0.25
+    r[m] = 0.9 + s * 0.1; g[m] = 0.15 + s * 0.4; b[m] = 0.1 - s * 0.1
+
+    m = (t > 0.25) & (t <= 0.5)
+    s = (t[m] - 0.25) / 0.25
+    r[m] = 1.0 - s * 0.05; g[m] = 0.55 + s * 0.35; b[m] = s * 0.1
+
+    m = (t > 0.5) & (t <= 0.75)
+    s = (t[m] - 0.5) / 0.25
+    r[m] = 0.95 - s * 0.75; g[m] = 0.9 - s * 0.05; b[m] = 0.1 + s * 0.7
+
+    m = t > 0.75
+    s = (t[m] - 0.75) / 0.25
+    r[m] = 0.2 + s * 0.15; g[m] = 0.85 - s * 0.15; b[m] = 0.8 + s * 0.15
+
+    return np.stack([r, g, b], axis=1)
+
+
 class JointBreaker:
     def __init__(
         self,
@@ -53,6 +81,9 @@ class JointBreaker:
         self.max_counts = np.zeros(self.voxel_count, np.int32)
         if not self.enabled:
             return
+        self._init_joint_tracking(model, n, max_breaks_per_step, scene)
+
+    def _init_joint_tracking(self, model, n, max_breaks_per_step, scene):
         if "joint_start" in scene:
             self.joint_enabled_offset = scene["joint_start"]
         else:
@@ -83,10 +114,7 @@ class JointBreaker:
         np.add.at(counts, pairs[active, 1], 1)
         safe_max = np.maximum(self.max_counts, 1)
         t = np.clip(counts.astype(np.float32) / safe_max, 0.0, 1.0)
-        colors = np.zeros((self.voxel_count, 3), np.float32)
-        for i in range(self.voxel_count):
-            colors[i] = health_to_color(t[i])
-        return colors
+        return _health_to_colors(t)
 
     def _compute_damage(self, body_torques, dt):
         diff = body_torques[self._ba] - body_torques[self._bb]
@@ -117,6 +145,19 @@ class JointBreaker:
             newly_broken[newly_broken_indices] = True
         return newly_broken, newly_broken_indices
 
+    def _apply_breaks(self, model, newly_broken, newly_broken_indices, joint_enabled, device):
+        self.broken |= newly_broken
+        self.damage[newly_broken] = 1.0
+        offset = self.joint_enabled_offset
+        for ji in newly_broken_indices:
+            model_idx = offset + ji
+            if model_idx < len(joint_enabled):
+                joint_enabled[model_idx] = 0
+        self._flush_to_solver(model, joint_enabled, device)
+        if self._break_log_count < 15:
+            print(f"  [break] {int(np.sum(newly_broken))} this step, {int(np.sum(self.broken))} total")
+            self._break_log_count += 1
+
     def update(self, model, dt, device, body_torques=None):
         if not self.enabled:
             return
@@ -128,21 +169,8 @@ class JointBreaker:
         instant = self._compute_damage(body_torques, dt)
         newly_broken, newly_broken_indices = self._get_newly_broken(instant)
 
-        broken_count = int(np.sum(newly_broken))
-        if broken_count > 0:
-            self.broken |= newly_broken
-            self.damage[newly_broken] = 1.0
-            offset = self.joint_enabled_offset
-            for ji in newly_broken_indices:
-                model_idx = offset + ji
-                if model_idx < len(joint_enabled):
-                    joint_enabled[model_idx] = 0
-            self._flush_to_solver(model, joint_enabled, device)
-            if self._break_log_count < 15:
-                print(
-                    f"  [break] {broken_count} this step, {int(np.sum(self.broken))} total"
-                )
-                self._break_log_count += 1
+        if np.any(newly_broken):
+            self._apply_breaks(model, newly_broken, newly_broken_indices, joint_enabled, device)
 
     def _mark_broken(self, ji, joint_enabled):
         self.broken[ji] = True
@@ -170,7 +198,9 @@ class JointBreaker:
             s.joint_C_fric.numpy(),
         )
 
-    def _zero_broken_penalties(self, penalty_k, penalty_k_max, penalty_kd, penalty_k_min):
+    def _zero_broken_penalties(
+        self, penalty_k, penalty_k_max, penalty_kd, penalty_k_min
+    ):
         for ji in range(len(self.neighbor_pairs)):
             if not self.broken[ji]:
                 continue
@@ -184,7 +214,9 @@ class JointBreaker:
                     penalty_kd[c] = 0.0
                     penalty_k_min[c] = 0.0
 
-    def _zero_broken_state(self, sigma_prev, sigma_start, kappa_prev, dkappa_prev, c_fric):
+    def _zero_broken_state(
+        self, sigma_prev, sigma_start, kappa_prev, dkappa_prev, c_fric
+    ):
         zero3 = (0.0, 0.0, 0.0)
         for ji in range(len(self.neighbor_pairs)):
             if not self.broken[ji]:
@@ -201,19 +233,39 @@ class JointBreaker:
             if model_idx < len(c_fric):
                 c_fric[model_idx] = zero3
 
-    def _sync_penalty_arrays(self, penalty_k, penalty_k_max, penalty_kd, penalty_k_min, device):
+    def _sync_penalty_arrays(
+        self, penalty_k, penalty_k_max, penalty_kd, penalty_k_min, device
+    ):
         s = self.solver
-        s.joint_penalty_k = wp.array(penalty_k, dtype=s.joint_penalty_k.dtype, device=device)
-        s.joint_penalty_k_max = wp.array(penalty_k_max, dtype=s.joint_penalty_k_max.dtype, device=device)
-        s.joint_penalty_kd = wp.array(penalty_kd, dtype=s.joint_penalty_kd.dtype, device=device)
-        s.joint_penalty_k_min = wp.array(penalty_k_min, dtype=s.joint_penalty_k_min.dtype, device=device)
+        s.joint_penalty_k = wp.array(
+            penalty_k, dtype=s.joint_penalty_k.dtype, device=device
+        )
+        s.joint_penalty_k_max = wp.array(
+            penalty_k_max, dtype=s.joint_penalty_k_max.dtype, device=device
+        )
+        s.joint_penalty_kd = wp.array(
+            penalty_kd, dtype=s.joint_penalty_kd.dtype, device=device
+        )
+        s.joint_penalty_k_min = wp.array(
+            penalty_k_min, dtype=s.joint_penalty_k_min.dtype, device=device
+        )
 
-    def _sync_state_arrays(self, sigma_prev, sigma_start, kappa_prev, dkappa_prev, c_fric, device):
+    def _sync_state_arrays(
+        self, sigma_prev, sigma_start, kappa_prev, dkappa_prev, c_fric, device
+    ):
         s = self.solver
-        s.joint_sigma_prev = wp.array(sigma_prev, dtype=s.joint_sigma_prev.dtype, device=device)
-        s.joint_sigma_start = wp.array(sigma_start, dtype=s.joint_sigma_start.dtype, device=device)
-        s.joint_kappa_prev = wp.array(kappa_prev, dtype=s.joint_kappa_prev.dtype, device=device)
-        s.joint_dkappa_prev = wp.array(dkappa_prev, dtype=s.joint_dkappa_prev.dtype, device=device)
+        s.joint_sigma_prev = wp.array(
+            sigma_prev, dtype=s.joint_sigma_prev.dtype, device=device
+        )
+        s.joint_sigma_start = wp.array(
+            sigma_start, dtype=s.joint_sigma_start.dtype, device=device
+        )
+        s.joint_kappa_prev = wp.array(
+            kappa_prev, dtype=s.joint_kappa_prev.dtype, device=device
+        )
+        s.joint_dkappa_prev = wp.array(
+            dkappa_prev, dtype=s.joint_dkappa_prev.dtype, device=device
+        )
         s.joint_C_fric = wp.array(c_fric, dtype=s.joint_C_fric.dtype, device=device)
 
     def _flush_to_solver(self, model, joint_enabled, device):
