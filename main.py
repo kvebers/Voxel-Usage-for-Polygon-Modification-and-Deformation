@@ -579,7 +579,8 @@ def init_camera(cfg):
         "fov": ccfg.fov,
         "near": ccfg.near,
         "far": ccfg.far,
-        "speed": 0.1,
+        "speed": getattr(ccfg, "speed", 0.02),
+        "mouse_sensitivity": getattr(ccfg, "mouse_sensitivity", 0.15),
     }
 
 
@@ -636,8 +637,9 @@ def _handle_mouse_event(event, cam, dragging):
             return False
     elif event.type == MOUSEMOTION and dragging:
         dx, dy = event.rel
-        cam["yaw"] += dx * 0.3
-        cam["pitch"] = max(-89, min(89, cam["pitch"] - dy * 0.3))
+        sens = cam["mouse_sensitivity"]
+        cam["yaw"] += dx * sens
+        cam["pitch"] = max(-89, min(89, cam["pitch"] - dy * sens))
     return dragging
 
 

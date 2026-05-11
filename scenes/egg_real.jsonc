@@ -9,8 +9,7 @@
   ],
 
   "camera": {
-    "distance": 8.0,
-    "position": [-3, 0.0, 0.7],
+    "position": [-3.0, -2.0, 1.5],
     "target": [0.0, 0.0, 0.8],
     "fov": 75.6,
     "near": 0.1,

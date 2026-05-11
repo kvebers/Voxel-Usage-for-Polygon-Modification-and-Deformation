@@ -74,23 +74,24 @@ class ForceApplier:
 
         state.body_f = wp.array(body_f, dtype=state.body_f.dtype, device=device)
 
+    # Heavy damping for near-zero velocities (drift regime), negligible at
+    # collision speeds. Threshold 0.3 m/s: full strength below, ~1% above 3 m/s.
+    _DRIFT_DAMP_COEFF = 5.0
+    _DRIFT_DAMP_THRESHOLD = 0.3
+
     def apply_elastic(self, state, device, broken=None):
-        """Pull every voxel toward its rest position (shape memory spring).
+        n, vbs, m = len(self.rest_pos), self.vbs, self.voxel_mass
+        body_f = state.body_f.numpy().copy()
+        lin_vel = state.body_qd.numpy()[vbs : vbs + n, :3].astype(np.float32)
 
-        Forces are F = -(stiffness * m) * displacement − (damping * m) * velocity,
-        so stiffness/damping are mass-normalised and resolution-independent.
-        Critical damping: damping = 2 * sqrt(stiffness).
+        speed = np.linalg.norm(lin_vel, axis=1, keepdims=True)
+        blend = 1.0 / (1.0 + (speed / self._DRIFT_DAMP_THRESHOLD) ** 2)
+        body_f[vbs : vbs + n, :3] -= (self._DRIFT_DAMP_COEFF * m) * lin_vel * blend
 
-        When broken joints are provided the mean is computed per connected
-        component, so each separated piece can translate freely without
-        generating spurious launch forces on the others.
-        """
         if self.stiffness == 0.0 and self.damping == 0.0:
+            state.body_f = wp.array(body_f, dtype=state.body_f.dtype, device=device)
             return
 
-        n, vbs, m = len(self.rest_pos), self.vbs, self.voxel_mass
-
-        body_f = state.body_f.numpy().copy()
         cur_pos = state.body_q.numpy()[vbs : vbs + n, :3].astype(np.float32)
         displacement = cur_pos - self.rest_pos
 
@@ -103,7 +104,6 @@ class ForceApplier:
         body_f[vbs : vbs + n, :3] -= (self.stiffness * m) * deformation
 
         if self.damping != 0.0:
-            lin_vel = state.body_qd.numpy()[vbs : vbs + n, :3].astype(np.float32)
             vel_deform = _subtract_component_mean(lin_vel, labels)
             body_f[vbs : vbs + n, :3] -= (self.damping * m) * vel_deform
 
