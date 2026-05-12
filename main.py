@@ -217,11 +217,18 @@ def _add_ground(builder, cfg):
 def _add_voxel_bodies(builder, positions, half, cfg, block_halves_world=None):
     voxel_body_start = builder.body_count
     vox = cfg.voxels
-    voxel_cfg = newton.ModelBuilder.ShapeConfig(
+    shape_kwargs = dict(
         density=vox.density,
         kf=getattr(vox, "kf", 1e4),
         mu=getattr(vox, "mu", 1.0),
     )
+    ke = getattr(vox, "ke", None)
+    kd = getattr(vox, "kd", None)
+    if ke is not None:
+        shape_kwargs["ke"] = ke
+    if kd is not None:
+        shape_kwargs["kd"] = kd
+    voxel_cfg = newton.ModelBuilder.ShapeConfig(**shape_kwargs)
     q = wp.quat_identity()
     body_idx = voxel_body_start
     if block_halves_world is not None:

@@ -59,7 +59,7 @@ DEFAULTS: dict[str, Any] = {
         "greedy_merge": False,
     },
     "ball": {
-        "enabled": True,
+        "enabled": False,
         "count": 1,
         "radius_factor": 0.2,
         "height_factor": 2.0,
