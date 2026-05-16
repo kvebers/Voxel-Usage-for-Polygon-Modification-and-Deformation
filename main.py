@@ -785,27 +785,6 @@ def compute_view_projection(cam, width, height):
     return proj, view, eye
 
 
-def _fix_state_nans(state, nan_idx, last_good, positions):
-    positions[nan_idx] = last_good[nan_idx]
-    state.body_q = wp.array(positions, dtype=state.body_q.dtype, device=device)
-    qd = state.body_qd.numpy()
-    qd[nan_idx] = 0.0
-    state.body_qd = wp.array(qd, dtype=state.body_qd.dtype, device=device)
-
-
-def _recover_nan_bodies(scene, transforms):
-    finite = np.isfinite(transforms).all(axis=1)
-    if finite.all():
-        scene["_last_valid_body_q"] = transforms.copy()
-        return False
-    last_good = scene.get("_last_valid_body_q")
-    if last_good is None:
-        return False
-    nan_idx = np.where(~finite)[0]
-    _fix_state_nans(scene["state_0"], nan_idx, last_good, transforms)
-    _fix_state_nans(scene["state_1"], nan_idx, last_good, scene["state_1"].body_q.numpy())
-    return True
-
 
 def _render_single_object(obj, transforms, sim, proj, view, eye):
     obj_scene = obj["scene"]
@@ -833,7 +812,6 @@ def render_frame(renderer, scene, sim, obj_list, proj, view, eye, cfg, profiler=
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
     renderer.draw_ground(proj, view)
     transforms = scene["state_0"].body_q.numpy()
-    _recover_nan_bodies(scene, transforms)
     t_deform = 0.0
     n_verts_deformed = 0
     n_faces_rendered = 0
