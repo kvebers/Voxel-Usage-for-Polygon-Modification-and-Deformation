@@ -1,6 +1,8 @@
 import numpy as np
 import warp as wp
 
+from src.constants import DRIFT_DAMP_COEFF, DRIFT_DAMP_THRESHOLD
+
 
 def _subtract_component_mean(arr, labels):
     result = arr.copy()
@@ -8,6 +10,21 @@ def _subtract_component_mean(arr, labels):
         mask = labels == comp_id
         result[mask] -= arr[mask].mean(axis=0, keepdims=True)
     return result
+
+
+def _drift_damp_delta(lin_vel, m):
+    speed = np.linalg.norm(lin_vel, axis=1, keepdims=True)
+    blend = 1.0 / (1.0 + (speed / DRIFT_DAMP_THRESHOLD) ** 2)
+    return (DRIFT_DAMP_COEFF * m) * lin_vel * blend
+
+
+def _elastic_restoring_delta(displacement, lin_vel, labels, stiffness, damping, m):
+    deformation = _subtract_component_mean(displacement, labels)
+    delta = (stiffness * m) * deformation
+    if damping != 0.0:
+        vel_deform = _subtract_component_mean(lin_vel, labels)
+        delta += (damping * m) * vel_deform
+    return delta
 
 
 class ForceApplier:
@@ -74,19 +91,12 @@ class ForceApplier:
 
         state.body_f = wp.array(body_f, dtype=state.body_f.dtype, device=device)
 
-    # Heavy damping for near-zero velocities (drift regime), negligible at
-    # collision speeds. Threshold 0.3 m/s: full strength below, ~1% above 3 m/s.
-    _DRIFT_DAMP_COEFF = 5.0
-    _DRIFT_DAMP_THRESHOLD = 0.3
-
     def apply_elastic(self, state, device, broken=None):
         n, vbs, m = len(self.rest_pos), self.vbs, self.voxel_mass
         body_f = state.body_f.numpy().copy()
         lin_vel = state.body_qd.numpy()[vbs : vbs + n, :3].astype(np.float32)
 
-        speed = np.linalg.norm(lin_vel, axis=1, keepdims=True)
-        blend = 1.0 / (1.0 + (speed / self._DRIFT_DAMP_THRESHOLD) ** 2)
-        body_f[vbs : vbs + n, :3] -= (self._DRIFT_DAMP_COEFF * m) * lin_vel * blend
+        body_f[vbs : vbs + n, :3] -= _drift_damp_delta(lin_vel, m)
 
         if self.stiffness == 0.0 and self.damping == 0.0:
             state.body_f = wp.array(body_f, dtype=state.body_f.dtype, device=device)
@@ -100,13 +110,9 @@ class ForceApplier:
         else:
             labels = np.zeros(n, dtype=np.int32)
 
-        deformation = _subtract_component_mean(displacement, labels)
-        body_f[vbs : vbs + n, :3] -= (self.stiffness * m) * deformation
-
-        if self.damping != 0.0:
-            vel_deform = _subtract_component_mean(lin_vel, labels)
-            body_f[vbs : vbs + n, :3] -= (self.damping * m) * vel_deform
-
+        body_f[vbs : vbs + n, :3] -= _elastic_restoring_delta(
+            displacement, lin_vel, labels, self.stiffness, self.damping, m
+        )
         state.body_f = wp.array(body_f, dtype=state.body_f.dtype, device=device)
 
     def _component_labels(self, broken):

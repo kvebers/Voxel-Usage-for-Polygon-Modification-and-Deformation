@@ -30,19 +30,27 @@ def _health_to_colors(t):
 
     m = (t > 0.0) & (t <= 0.25)
     s = t[m] / 0.25
-    r[m] = 0.9 + s * 0.1; g[m] = 0.15 + s * 0.4; b[m] = 0.1 - s * 0.1
+    r[m] = 0.9 + s * 0.1
+    g[m] = 0.15 + s * 0.4
+    b[m] = 0.1 - s * 0.1
 
     m = (t > 0.25) & (t <= 0.5)
     s = (t[m] - 0.25) / 0.25
-    r[m] = 1.0 - s * 0.05; g[m] = 0.55 + s * 0.35; b[m] = s * 0.1
+    r[m] = 1.0 - s * 0.05
+    g[m] = 0.55 + s * 0.35
+    b[m] = s * 0.1
 
     m = (t > 0.5) & (t <= 0.75)
     s = (t[m] - 0.5) / 0.25
-    r[m] = 0.95 - s * 0.75; g[m] = 0.9 - s * 0.05; b[m] = 0.1 + s * 0.7
+    r[m] = 0.95 - s * 0.75
+    g[m] = 0.9 - s * 0.05
+    b[m] = 0.1 + s * 0.7
 
     m = t > 0.75
     s = (t[m] - 0.75) / 0.25
-    r[m] = 0.2 + s * 0.15; g[m] = 0.85 - s * 0.15; b[m] = 0.8 + s * 0.15
+    r[m] = 0.2 + s * 0.15
+    g[m] = 0.85 - s * 0.15
+    b[m] = 0.8 + s * 0.15
 
     return np.stack([r, g, b], axis=1)
 
@@ -145,7 +153,9 @@ class JointBreaker:
             newly_broken[newly_broken_indices] = True
         return newly_broken, newly_broken_indices
 
-    def _apply_breaks(self, model, newly_broken, newly_broken_indices, joint_enabled, device):
+    def _apply_breaks(
+        self, model, newly_broken, newly_broken_indices, joint_enabled, device
+    ):
         self.broken |= newly_broken
         self.damage[newly_broken] = 1.0
         offset = self.joint_enabled_offset
@@ -155,7 +165,9 @@ class JointBreaker:
                 joint_enabled[model_idx] = 0
         self._flush_to_solver(model, joint_enabled, device)
         if self._break_log_count < 15:
-            print(f"  [break] {int(np.sum(newly_broken))} this step, {int(np.sum(self.broken))} total")
+            print(
+                f"  [break] {int(np.sum(newly_broken))} this step, {int(np.sum(self.broken))} total"
+            )
             self._break_log_count += 1
 
     def update(self, model, dt, device, body_torques=None):
@@ -170,7 +182,9 @@ class JointBreaker:
         newly_broken, newly_broken_indices = self._get_newly_broken(instant)
 
         if np.any(newly_broken):
-            self._apply_breaks(model, newly_broken, newly_broken_indices, joint_enabled, device)
+            self._apply_breaks(
+                model, newly_broken, newly_broken_indices, joint_enabled, device
+            )
 
     def _mark_broken(self, ji, joint_enabled):
         self.broken[ji] = True

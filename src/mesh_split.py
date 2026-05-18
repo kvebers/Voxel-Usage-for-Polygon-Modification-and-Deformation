@@ -3,9 +3,7 @@ import numpy as np
 from src.draw_helpers import batch_quat_to_mat3
 from scipy.spatial import KDTree
 from skimage.measure import marching_cubes
-
-_DEFAULT_BASE_ROT = np.array([[1, 0, 0], [0, 0, -1], [0, 1, 0]], dtype=np.float32)
-_DEFAULT_BASE_OFFSET = np.array([0.0, 0.0, 1.5], dtype=np.float32)
+from src.constants import DEFAULT_BASE_ROT, DEFAULT_BASE_OFFSET
 
 
 def _compute_normals(pos, idx_tris, n_verts):
@@ -50,7 +48,9 @@ def _build_vox_to_verts_index(n_voxels, split_bindings):
     return vox_to_verts
 
 
-def _compute_blended_positions(voxel_pos, voxel_rots, vox_centers_mesh, sv, bi, bw, base_rot):
+def _compute_blended_positions(
+    voxel_pos, voxel_rots, vox_centers_mesh, sv, bi, bw, base_rot
+):
     blended = np.zeros((len(sv), 3), dtype=np.float32)
     for k in range(bi.shape[1]):
         vi = bi[:, k]
@@ -200,8 +200,8 @@ class MeshSplitter:
             self.BASE_OFFSET = np.array(ms_cfg.base_offset, dtype=np.float32)
             method_name = getattr(ms_cfg, "deform_method", "rigid")
         else:
-            self.BASE_ROT = _DEFAULT_BASE_ROT
-            self.BASE_OFFSET = _DEFAULT_BASE_OFFSET
+            self.BASE_ROT = DEFAULT_BASE_ROT
+            self.BASE_OFFSET = DEFAULT_BASE_OFFSET
             method_name = "rigid"
         if method_name not in DEFORM_METHODS:
             raise ValueError(f"Incorrect Method")

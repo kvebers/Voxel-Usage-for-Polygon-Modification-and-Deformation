@@ -3,9 +3,7 @@ import numpy as np
 from OpenGL.GL import *
 from src.draw_helpers import *
 from src.shaders import *
-
-_LIGHT_DIR = np.array([-1.0, -0.5, 1.0], dtype=np.float32)
-_LIGHT_DIR /= np.linalg.norm(_LIGHT_DIR)
+from src.constants import LIGHT_DIR
 
 
 def _cache_locs(prog, names):
@@ -34,14 +32,16 @@ class ObjectRenderer:
             if block_halves is not None
             else None
         )
+        self._setup_mesh_buffers(mesh_indices)
+        self._setup_voxel_buffers(voxel_count, renderer)
 
+    def _setup_mesh_buffers(self, mesh_indices):
         self.mesh_vao = create_vao()
         max_verts = int(mesh_indices.max()) + 1 if len(mesh_indices) > 0 else 1
         self._mesh_vbo_capacity = max_verts * 3 * 6 * 4
         self.mesh_vbo = create_buffer(
             size=self._mesh_vbo_capacity, usage=GL_DYNAMIC_DRAW
         )
-
         self.mesh_ebo = glGenBuffers(1)
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, self.mesh_ebo)
         idx_data = mesh_indices.astype(np.uint32)
@@ -54,6 +54,7 @@ class ObjectRenderer:
         setup_mesh_vao(self.mesh_vao, self.mesh_vbo, self.mesh_ebo)
         self.mesh_index_count = len(idx_data)
 
+    def _setup_voxel_buffers(self, voxel_count, renderer):
         self.cube_inst_vbo = create_buffer(size=voxel_count * 64, usage=GL_DYNAMIC_DRAW)
         self.cube_color_vbo = create_buffer(
             size=voxel_count * 12, usage=GL_DYNAMIC_DRAW
@@ -216,13 +217,13 @@ class Renderer:
 
     def _setup_lighting(self):
         glUseProgram(self.prog_mesh)
-        glUniform3fv(self._uloc_mesh["uLightDir"], 1, _LIGHT_DIR)
+        glUniform3fv(self._uloc_mesh["uLightDir"], 1, LIGHT_DIR)
         glUniform1f(self._uloc_mesh["uAmbient"], 0.4)
         glUseProgram(self.prog_inst)
-        glUniform3fv(self._uloc_inst["uLightDir"], 1, _LIGHT_DIR)
+        glUniform3fv(self._uloc_inst["uLightDir"], 1, LIGHT_DIR)
         glUniform1f(self._uloc_inst["uAmbient"], 0.4)
         glUseProgram(self.prog_inst_color)
-        glUniform3fv(self._uloc_inst_color["uLightDir"], 1, _LIGHT_DIR)
+        glUniform3fv(self._uloc_inst_color["uLightDir"], 1, LIGHT_DIR)
         glUniform1f(self._uloc_inst_color["uAmbient"], 0.4)
         glUseProgram(0)
 

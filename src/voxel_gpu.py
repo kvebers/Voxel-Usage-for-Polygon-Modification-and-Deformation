@@ -2,6 +2,7 @@ import numpy as np
 import moderngl
 from scipy.ndimage import label
 from scipy.spatial import KDTree
+from src.constants import FACE_DEFS
 
 
 def preprocess_vertices(
@@ -192,18 +193,10 @@ def _build_block_geometry(blocks: list, grid_shape: tuple):
     return voxel_to_block, block_centers, block_halves_voxel
 
 
-def _enumerate_joint_contacts(blocks, voxel_to_block, block_centers, grid_shape):
-    face_defs = [
-        ((-1, 0, 0), lambda b: (b[0], b[0], b[1], b[4], b[2], b[5])),
-        ((+1, 0, 0), lambda b: (b[3], b[3], b[1], b[4], b[2], b[5])),
-        ((0, -1, 0), lambda b: (b[0], b[3], b[1], b[1], b[2], b[5])),
-        ((0, +1, 0), lambda b: (b[0], b[3], b[4], b[4], b[2], b[5])),
-        ((0, 0, -1), lambda b: (b[0], b[3], b[1], b[4], b[2], b[2])),
-        ((0, 0, +1), lambda b: (b[0], b[3], b[1], b[4], b[5], b[5])),
-    ]
+def _scan_block_faces(blocks, voxel_to_block, grid_shape):
     pair_joints: dict = {}
     for bi, blk in enumerate(blocks):
-        for (dx, dy, dz), face_fn in face_defs:
+        for (dx, dy, dz), face_fn in FACE_DEFS:
             fx0, fx1, fy0, fy1, fz0, fz1 = face_fn(blk)
             fxs, fys, fzs = np.meshgrid(
                 np.arange(fx0, fx1 + 1),
@@ -233,7 +226,10 @@ def _enumerate_joint_contacts(blocks, voxel_to_block, block_centers, grid_shape)
                 jy = float(fy) + (1 + dy) / 2
                 jz = float(fz) + (1 + dz) / 2
                 pair_joints.setdefault(key, set()).add((jx, jy, jz))
+    return pair_joints
 
+
+def _build_joint_offsets(pair_joints, block_centers):
     neighbor_pairs = []
     joint_voxel_offsets = []
     for (a, b), pts in pair_joints.items():
@@ -252,6 +248,11 @@ def _enumerate_joint_contacts(blocks, voxel_to_block, block_centers, grid_shape)
                 )
             )
     return neighbor_pairs, joint_voxel_offsets
+
+
+def _enumerate_joint_contacts(blocks, voxel_to_block, block_centers, grid_shape):
+    pair_joints = _scan_block_faces(blocks, voxel_to_block, grid_shape)
+    return _build_joint_offsets(pair_joints, block_centers)
 
 
 def build_block_topology(blocks: list, grid_shape: tuple):

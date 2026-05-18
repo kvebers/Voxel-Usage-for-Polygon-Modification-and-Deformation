@@ -127,13 +127,21 @@ def voxelize_and_build_topology(
         active_grid = repair_isolated_voxels(active_grid, grid_filled)
 
     if greedy_merge:
-        coords, coord_to_idx, neighbor_pairs, block_halves_voxel, joint_voxel_offsets = (
-            _build_greedy_topology(active_grid)
-        )
+        (
+            coords,
+            coord_to_idx,
+            neighbor_pairs,
+            block_halves_voxel,
+            joint_voxel_offsets,
+        ) = _build_greedy_topology(active_grid)
     else:
-        coords, coord_to_idx, neighbor_pairs, block_halves_voxel, joint_voxel_offsets = (
-            _build_regular_topology(active_grid)
-        )
+        (
+            coords,
+            coord_to_idx,
+            neighbor_pairs,
+            block_halves_voxel,
+            joint_voxel_offsets,
+        ) = _build_regular_topology(active_grid)
     return (
         grid_filled,
         grid_hollow,
@@ -298,8 +306,16 @@ def _add_joints(
     for ji in range(len(pairs)):
         ba = voxel_body_start + int(pairs[ji, 0])
         bb = voxel_body_start + int(pairs[ji, 1])
-        ox_a, oy_a, oz_a = float(oa_all[ji, 0]), float(oa_all[ji, 1]), float(oa_all[ji, 2])
-        ox_b, oy_b, oz_b = float(ob_all[ji, 0]), float(ob_all[ji, 1]), float(ob_all[ji, 2])
+        ox_a, oy_a, oz_a = (
+            float(oa_all[ji, 0]),
+            float(oa_all[ji, 1]),
+            float(oa_all[ji, 2]),
+        )
+        ox_b, oy_b, oz_b = (
+            float(ob_all[ji, 0]),
+            float(ob_all[ji, 1]),
+            float(ob_all[ji, 2]),
+        )
         builder.add_joint_fixed(
             ba,
             bb,
@@ -424,6 +440,35 @@ def _finalize_model(builder, cfg):
     return model, state_0, state_1, solver
 
 
+def _compute_object_world_geometry(obj_data, cfg):
+    mesh_verts = obj_data["centered_verts"]
+    coords = obj_data["coords"]
+    coord_to_idx = obj_data["coord_to_idx"]
+    resolution = obj_data["resolution"]
+    world_offset = tuple(obj_data["offset"])
+    extent, _, voxel_size, half, grid_min = _compute_voxel_geometry(
+        mesh_verts, resolution, cfg
+    )
+    positions = _compute_voxel_positions(
+        coords, resolution, cfg, mesh_verts, half, world_offset=world_offset
+    )
+    bindings, offsets = bind_vertices_to_voxels(
+        mesh_verts, coords, coord_to_idx, grid_min, voxel_size, resolution
+    )
+    block_halves_world, joint_world_offsets = _scale_greedy_to_world(
+        obj_data["block_halves_voxel"], obj_data["joint_voxel_offsets"], voxel_size
+    )
+    return (
+        positions,
+        bindings,
+        offsets,
+        block_halves_world,
+        joint_world_offsets,
+        extent,
+        half,
+    )
+
+
 def build_scene_multi(all_obj_data, cfg):
     builder = newton.ModelBuilder()
     _add_ground(builder, cfg)
@@ -434,28 +479,18 @@ def build_scene_multi(all_obj_data, cfg):
     all_positions_list = []
 
     for obj_data in all_obj_data:
-        mesh_verts = obj_data["centered_verts"]
-        coords = obj_data["coords"]
-        coord_to_idx = obj_data["coord_to_idx"]
         neighbor_pairs = obj_data["neighbor_pairs"]
-        resolution = obj_data["resolution"]
-        world_offset = tuple(obj_data["offset"])
-
-        extent, _, voxel_size, half, grid_min = _compute_voxel_geometry(
-            mesh_verts, resolution, cfg
-        )
+        (
+            positions,
+            bindings,
+            offsets,
+            block_halves_world,
+            joint_world_offsets,
+            extent,
+            half,
+        ) = _compute_object_world_geometry(obj_data, cfg)
         if first_extent is None:
             first_extent = (extent, half)
-
-        positions = _compute_voxel_positions(
-            coords, resolution, cfg, mesh_verts, half, world_offset=world_offset
-        )
-        bindings, offsets = bind_vertices_to_voxels(
-            mesh_verts, coords, coord_to_idx, grid_min, voxel_size, resolution
-        )
-        block_halves_world, joint_world_offsets = _scale_greedy_to_world(
-            obj_data["block_halves_voxel"], obj_data["joint_voxel_offsets"], voxel_size
-        )
 
         voxel_body_start = _add_voxel_bodies(
             builder, positions, half, cfg, block_halves_world=block_halves_world
@@ -473,7 +508,7 @@ def build_scene_multi(all_obj_data, cfg):
         per_obj.append(
             {
                 "voxel_body_start": voxel_body_start,
-                "voxel_count": len(coords),
+                "voxel_count": len(obj_data["coords"]),
                 "positions": positions,
                 "neighbor_pairs": neighbor_pairs,
                 "bindings": bindings,
@@ -573,11 +608,14 @@ def init_camera(cfg):
         yaw_r = math.radians(ccfg.yaw)
         pitch_r = math.radians(ccfg.pitch)
         d = ccfg.distance
-        pos = target + np.array([
-            d * math.cos(pitch_r) * math.cos(yaw_r),
-            d * math.cos(pitch_r) * math.sin(yaw_r),
-            d * math.sin(pitch_r),
-        ], dtype=np.float32)
+        pos = target + np.array(
+            [
+                d * math.cos(pitch_r) * math.cos(yaw_r),
+                d * math.cos(pitch_r) * math.sin(yaw_r),
+                d * math.sin(pitch_r),
+            ],
+            dtype=np.float32,
+        )
     yaw, pitch = _yaw_pitch_from_direction(target - pos)
     return {
         "position": pos,
@@ -685,22 +723,34 @@ def movement(cam):
         return
     speed = cam["speed"]
     fwd, right, up = _camera_basis_vectors(cam["yaw"])
-    if keys[K_w]: cam["position"] += fwd * speed
-    if keys[K_s]: cam["position"] -= fwd * speed
-    if keys[K_d]: cam["position"] += right * speed
-    if keys[K_a]: cam["position"] -= right * speed
-    if keys[K_e]: cam["position"] += up * speed
-    if keys[K_q]: cam["position"] -= up * speed
+    if keys[K_w]:
+        cam["position"] += fwd * speed
+    if keys[K_s]:
+        cam["position"] -= fwd * speed
+    if keys[K_d]:
+        cam["position"] += right * speed
+    if keys[K_a]:
+        cam["position"] -= right * speed
+    if keys[K_e]:
+        cam["position"] += up * speed
+    if keys[K_q]:
+        cam["position"] -= up * speed
 
 
-def _record_substep_stats(profiler, t_forces, t_collision, t_solver, t_joints, sim, joint_breakers):
+def _record_substep_stats(
+    profiler, t_forces, t_collision, t_solver, t_joints, sim, joint_breakers
+):
     profiler.record("forces", t_forces)
     profiler.record("collision", t_collision)
     profiler.record("solver", t_solver)
     profiler.record("joints", t_joints)
     profiler.count("substeps", sim["substeps"])
-    profiler.count("active_joints", sum(int(np.sum(~jb.broken)) for jb in joint_breakers))
-    profiler.count("broken_joints", sum(int(np.sum(jb.broken)) for jb in joint_breakers))
+    profiler.count(
+        "active_joints", sum(int(np.sum(~jb.broken)) for jb in joint_breakers)
+    )
+    profiler.count(
+        "broken_joints", sum(int(np.sum(jb.broken)) for jb in joint_breakers)
+    )
 
 
 def _sync_mesh_splitters(joint_breakers, mesh_splitters):
@@ -752,14 +802,18 @@ def step_simulation(
 
         if timing:
             _t = time.perf_counter()
-        body_torques = solver.body_torques.numpy()  # one GPU read shared across all JointBreakers
+        body_torques = (
+            solver.body_torques.numpy()
+        )  # one GPU read shared across all JointBreakers
         for jb in joint_breakers:
             jb.update(model, sim["sim_dt"], device, body_torques=body_torques)
         if timing:
             t_joints += time.perf_counter() - _t
 
     if profiler is not None:
-        _record_substep_stats(profiler, t_forces, t_collision, t_solver, t_joints, sim, joint_breakers)
+        _record_substep_stats(
+            profiler, t_forces, t_collision, t_solver, t_joints, sim, joint_breakers
+        )
     scene["state_0"], scene["state_1"] = state_0, state_1
     sim["sim_time"] += sim["frame_dt"]
     sim["frame_count"] += 1
@@ -776,14 +830,16 @@ def compute_view_projection(cam, width, height):
     eye = cam["position"]
     yaw_r = math.radians(cam["yaw"])
     pitch_r = math.radians(cam["pitch"])
-    look_fwd = np.array([
-        -math.cos(pitch_r) * math.cos(yaw_r),
-        -math.cos(pitch_r) * math.sin(yaw_r),
-        -math.sin(pitch_r),
-    ], dtype=np.float32)
+    look_fwd = np.array(
+        [
+            -math.cos(pitch_r) * math.cos(yaw_r),
+            -math.cos(pitch_r) * math.sin(yaw_r),
+            -math.sin(pitch_r),
+        ],
+        dtype=np.float32,
+    )
     view = look_at_matrix(eye, eye + look_fwd, np.array([0, 0, 1], np.float32))
     return proj, view, eye
-
 
 
 def _render_single_object(obj, transforms, sim, proj, view, eye):
