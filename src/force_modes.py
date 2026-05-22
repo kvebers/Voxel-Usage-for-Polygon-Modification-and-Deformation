@@ -13,6 +13,7 @@ def _subtract_component_mean(arr, labels):
 
 
 def _drift_damp_delta(lin_vel, m):
+    lin_vel = np.nan_to_num(lin_vel, nan=0.0, posinf=0.0, neginf=0.0)
     speed = np.linalg.norm(lin_vel, axis=1, keepdims=True)
     blend = 1.0 / (1.0 + (speed / DRIFT_DAMP_THRESHOLD) ** 2)
     return (DRIFT_DAMP_COEFF * m) * lin_vel * blend

@@ -1,0 +1,341 @@
+{
+  "objects": [
+    {
+      "path": "obj/large_buildingG.obj",
+      "offset": [0, 0.0, 0.0],
+      "color": [0.7, 0.95, 0.2],
+      "resolution": 3,
+    },
+    {
+      "path": "obj/large_buildingG.obj",
+      "offset": [0, 1.4, 0.0],
+      "color": [0.75, 0.9, 0.35],
+      "resolution": 3,
+    },
+    {
+      "path": "obj/large_buildingG.obj",
+      "offset": [0, -1.4, 0.0],
+      "color": [0.75, 0.9, 0.35],
+      "resolution": 3,
+    },
+    {
+      "path": "obj/large_buildingG.obj",
+      "offset": [1.4, 0.0, 0.0],
+      "color": [0.85, 0.9, 0.25],
+      "resolution": 3,
+    },
+    {
+      "path": "obj/large_buildingG.obj",
+      "offset": [-1.4, 0.0, 0.0],
+      "color": [0.85, 0.9, 0.25],
+      "resolution": 3,
+    },
+    {
+      "path": "obj/large_buildingG.obj",
+      "offset": [-1.4, -1.4, 0.0],
+      "color": [0.7, 0.95, 0.2],
+      "resolution": 3,
+    },
+    {
+      "path": "obj/large_buildingG.obj",
+      "offset": [1.4, -1.4, 0.0],
+      "color": [0.9, 0.85, 0.2],
+      "resolution": 3,
+    },
+    {
+      "path": "obj/large_buildingG.obj",
+      "offset": [-1.4, 1.4, 0.0],
+      "color": [0.9, 0.85, 0.2],
+      "resolution": 3,
+    },
+    {
+      "path": "obj/large_buildingG.obj",
+      "offset": [1.4, 1.4, 0.0],
+      "color": [0.7, 0.95, 0.2],
+      "resolution": 3,
+    },
+
+    {
+      "path": "obj/large_buildingG.obj",
+      "offset": [-2.8, 1.4, 0.0],
+      "color": [0.6, 0.88, 0.95],
+      "resolution": 3,
+    },
+    {
+      "path": "obj/large_buildingG.obj",
+      "offset": [-2.8, -1.4, 0.0],
+      "color": [0.6, 0.88, 0.95],
+      "resolution": 3,
+    },
+    {
+      "path": "obj/large_buildingG.obj",
+      "offset": [-2.8, 0.0, 0.0],
+      "color": [0.55, 0.82, 0.92],
+      "resolution": 3,
+    },
+    {
+      "path": "obj/large_buildingG.obj",
+      "offset": [2.8, 1.4, 0.0],
+      "color": [0.9, 0.72, 0.25],
+      "resolution": 3,
+    },
+    {
+      "path": "obj/large_buildingG.obj",
+      "offset": [2.8, -1.4, 0.0],
+      "color": [0.9, 0.72, 0.25],
+      "resolution": 3,
+    },
+    {
+      "path": "obj/large_buildingG.obj",
+      "offset": [2.8, 0.0, 0.0],
+      "color": [0.95, 0.78, 0.3],
+      "resolution": 3,
+    },
+
+    {
+      "path": "obj/large_buildingG.obj",
+      "offset": [0.0, 2.8, 0.0],
+      "color": [0.75, 0.9, 0.35],
+      "resolution": 3,
+    },
+    {
+      "path": "obj/large_buildingG.obj",
+      "offset": [1.4, 2.8, 0.0],
+      "color": [0.7, 0.95, 0.2],
+      "resolution": 3,
+    },
+    {
+      "path": "obj/large_buildingG.obj",
+      "offset": [-1.4, 2.8, 0.0],
+      "color": [0.85, 0.9, 0.25],
+      "resolution": 3,
+    },
+    {
+      "path": "obj/large_buildingG.obj",
+      "offset": [0.0, -2.8, 0.0],
+      "color": [0.75, 0.9, 0.35],
+      "resolution": 3,
+    },
+    {
+      "path": "obj/large_buildingG.obj",
+      "offset": [1.4, -2.8, 0.0],
+      "color": [0.9, 0.85, 0.2],
+      "resolution": 3,
+    },
+    {
+      "path": "obj/large_buildingG.obj",
+      "offset": [-1.4, -2.8, 0.0],
+      "color": [0.9, 0.85, 0.2],
+      "resolution": 3,
+    },
+
+    {
+      "path": "obj/large_buildingG.obj",
+      "offset": [-2.8, 2.8, 0.0],
+      "color": [0.6, 0.88, 0.95],
+      "resolution": 3,
+    },
+    {
+      "path": "obj/large_buildingG.obj",
+      "offset": [2.8, 2.8, 0.0],
+      "color": [0.9, 0.72, 0.25],
+      "resolution": 3,
+    },
+    {
+      "path": "obj/large_buildingG.obj",
+      "offset": [-2.8, -2.8, 0.0],
+      "color": [0.55, 0.82, 0.92],
+      "resolution": 3,
+    },
+    {
+      "path": "obj/large_buildingG.obj",
+      "offset": [2.8, -2.8, 0.0],
+      "color": [0.95, 0.78, 0.3],
+      "resolution": 3,
+    },
+    {
+      "path": "obj/large_buildingG.obj",
+      "offset": [4.2, 2.8, 0.0],
+      "color": [0.95, 0.72, 0.22],
+      "resolution": 3,
+    },
+    {
+      "path": "obj/large_buildingG.obj",
+      "offset": [4.2, 1.4, 0.0],
+      "color": [0.92, 0.68, 0.2],
+      "resolution": 3,
+    },
+    {
+      "path": "obj/large_buildingG.obj",
+      "offset": [4.2, 0.0, 0.0],
+      "color": [0.98, 0.8, 0.28],
+      "resolution": 3,
+    },
+    {
+      "path": "obj/large_buildingG.obj",
+      "offset": [4.2, -1.4, 0.0],
+      "color": [0.92, 0.68, 0.2],
+      "resolution": 3,
+    },
+    {
+      "path": "obj/large_buildingG.obj",
+      "offset": [4.2, -2.8, 0.0],
+      "color": [0.95, 0.72, 0.22],
+      "resolution": 3,
+    },
+
+    {
+      "path": "obj/large_buildingG.obj",
+      "offset": [4.2, -4.2, 0.0],
+      "color": [0.98, 0.76, 0.25],
+      "resolution": 3,
+    },
+    {
+      "path": "obj/large_buildingG.obj",
+      "offset": [2.8, -4.2, 0.0],
+      "color": [0.95, 0.78, 0.3],
+      "resolution": 3,
+    },
+    {
+      "path": "obj/large_buildingG.obj",
+      "offset": [1.4, -4.2, 0.0],
+      "color": [0.9, 0.82, 0.25],
+      "resolution": 3,
+    },
+    {
+      "path": "obj/large_buildingG.obj",
+      "offset": [0.0, -4.2, 0.0],
+      "color": [0.88, 0.85, 0.22],
+      "resolution": 3,
+    },
+    {
+      "path": "obj/large_buildingG.obj",
+      "offset": [-1.4, -4.2, 0.0],
+      "color": [0.9, 0.82, 0.25],
+      "resolution": 3,
+    },
+    {
+      "path": "obj/large_buildingG.obj",
+      "offset": [-2.8, -4.2, 0.0],
+      "color": [0.58, 0.84, 0.93],
+      "resolution": 3,
+    },
+    {
+      "path": "obj/large_buildingG.obj",
+      "offset": [4.2, -5.6, 0.0],
+      "color": [0.98, 0.76, 0.25],
+      "resolution": 3,
+    },
+    {
+      "path": "obj/large_buildingG.obj",
+      "offset": [2.8, -5.6, 0.0],
+      "color": [0.95, 0.78, 0.3],
+      "resolution": 3,
+    },
+    {
+      "path": "obj/large_buildingG.obj",
+      "offset": [1.4, -5.6, 0.0],
+      "color": [0.9, 0.82, 0.25],
+      "resolution": 3,
+    },
+    {
+      "path": "obj/large_buildingG.obj",
+      "offset": [0.0, -5.6, 0.0],
+      "color": [0.88, 0.85, 0.22],
+      "resolution": 3,
+    },
+    {
+      "path": "obj/large_buildingG.obj",
+      "offset": [-1.4, -5.6, 0.0],
+      "color": [0.9, 0.82, 0.25],
+      "resolution": 3,
+    },
+    {
+      "path": "obj/large_buildingG.obj",
+      "offset": [-2.8, -5.6, 0.0],
+      "color": [0.58, 0.84, 0.93],
+      "resolution": 3,
+    },
+  ],
+
+  "camera": {
+    "position": [-12.0, -8.0, 8.0],
+    "target": [0.7, -1.4, 3.0],
+    "fov": 50,
+    "near": 0.1,
+    "far": 200.0,
+  },
+
+  "window": {
+    "width": 1280,
+    "height": 720,
+    "title": "Augmented Greedy Vertex Voxel Block Descent",
+    "clear_color": [0.08, 0.09, 0.12, 1.0],
+  },
+
+  "simulation": {
+    "fps": 60,
+    "substeps": 1,
+    "start_paused": true,
+  },
+
+  "ground": {
+    "position": [0.0, 0.0, -0.5],
+    "half_extents": [50.0, 50.0, 0.5],
+    "density": 0.0,
+    "ke": 5e5,
+    "kd": 2e3,
+    "kf": 1e3,
+    "mu": 0.98,
+  },
+
+  "voxels": {
+    "density": 3000.0,
+    "padding": 0.02,
+    "fill_mode": true,
+  },
+
+  "ball": {
+    "enabled": true,
+    "count": 1,
+    "radius_factor": 2,
+    "height_factor": 7.0,
+    "density": 8000.0,
+    "ke": 3e3,
+    "kd": 1e3,
+    "kf": 1e3,
+    "mu": 0.5,
+    "color": [0.1, 0.1, 0.1],
+  },
+
+  "solver": {
+    "rigid_body_contact_buffer_size": 4096,
+    "rigid_contact_k_start": 1e4,
+    "rigid_joint_linear_ke": 1e3,
+    "rigid_joint_angular_ke": 1e3,
+    "rigid_avbd_beta": 5e2,
+    "iterations": 6,
+    "rigid_joint_linear_kd": 500.0,
+    "rigid_joint_angular_kd": 500.0,
+  },
+
+  "joints": {
+    "enabled": false,
+    "linear_break_force": 3500.0,
+    "angular_break_torque": 4500.0,
+    "damage_rate": 0.3,
+    "heal_rate": 0.1,
+    "instant_break_force": 1e8,
+    "instant_break_torque": 1e8,
+    "max_breaks_per_step": 3,
+  },
+
+  "render": {
+    "default_mode": "mesh",
+    "mesh_color": [0.7, 0.95, 0.2],
+  },
+
+  "force_modes": {
+    "strength": 20.0,
+  },
+}
