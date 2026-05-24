@@ -1,15 +1,5 @@
 __pycache__
 venv
-tests/
-shader_tests/
-data_analysis/
-bench.py
-mesh_bench.py
-make_egg.py
 obj/eggg.obj
-compare_videos.py
-compare_sheet.py
-plot_setup_compare.py
 .ruff_cache
-helper_script_to_be_deleted/
-ruff.toml
+test.md

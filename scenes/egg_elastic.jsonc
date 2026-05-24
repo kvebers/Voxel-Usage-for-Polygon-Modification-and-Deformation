@@ -16,19 +16,6 @@
     "far": 200.0,
   },
 
-  "window": {
-    "width": 1280,
-    "height": 720,
-    "title": "Augmented Greedy Vertex Voxel Block Descent",
-    "clear_color": [0.08, 0.09, 0.12, 1.0],
-  },
-
-  "simulation": {
-    "fps": 60,
-    "substeps": 1,
-    "start_paused": true,
-  },
-
   "ground": {
     "position": [0.0, 0.0, -0.5],
     "half_extents": [50.0, 50.0, 0.5],
@@ -43,19 +30,6 @@
     "density": 1000.0,
     "padding": 0.02,
     "fill_mode": false,
-  },
-
-  "ball": {
-    "enabled": false,
-    "count": 1,
-    "radius_factor": 0.2,
-    "height_factor": 5.0,
-    "density": 1000.0,
-    "ke": 2e3,
-    "kd": 1e3,
-    "kf": 1e3,
-    "mu": 0.5,
-    "color": [0.3, 0.35, 0.85],
   },
 
   "solver": {
@@ -76,11 +50,9 @@
 
   "joints": {
     "enabled": true,
-    "linear_break_force": 100.0,
     "angular_break_torque": 100.0,
     "damage_rate": 0.05,
     "heal_rate": 0.4,
-    "instant_break_force": 1e3,
     "instant_break_torque": 1e3,
     "max_breaks_per_step": 3,
   },

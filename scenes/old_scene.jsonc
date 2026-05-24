@@ -1,0 +1,61 @@
+{
+  "objects": [
+    {
+      "path": "obj/teapot.obj",
+      "offset": [0, 0.0, 0.0],
+      "color": [0.7, 0.95, 0.2],
+      "resolution": 8,
+    },
+    {
+      "path": "obj/bunny.obj",
+      "offset": [0, 0.0, 2.0],
+      "color": [0.9, 0.5, 0.2],
+      "resolution": 8,
+    },
+    {
+      "path": "obj/1.obj",
+      "offset": [0, 0.0, 4.0],
+      "color": [1, 0.5, 0.4],
+      "resolution": 6,
+    },
+    {
+      "path": "obj/suzanne.obj",
+      "offset": [0, 0.0, 6.0],
+      "color": [0.9, 1, 0.4],
+      "resolution": 6,
+    },
+    {
+      "path": "obj/xyzrgb_dragon.obj",
+      "offset": [0, 0.0, 8.0],
+      "color": [0.9, 0.5, 1],
+      "resolution": 6,
+    },
+  ],
+  "voxels": {
+    "density": 300.0,
+    "padding": 0.02,
+    "fill_mode": true,
+    "greedy_merge": false,
+    "ensure_connected": true,
+  },
+
+  "solver": {
+    "rigid_body_contact_buffer_size": 32768,
+    "rigid_contact_k_start": 1e4,
+    "rigid_joint_linear_ke": 1e3,
+    "rigid_joint_angular_ke": 1e3,
+    "rigid_avbd_beta": 5e2,
+    "iterations": 3,
+    "rigid_joint_linear_kd": 500.0,
+    "rigid_joint_angular_kd": 500.0,
+  },
+
+  "joints": {
+    "enabled": true,
+    "angular_break_torque": 4500.0,
+    "damage_rate": 0.3,
+    "heal_rate": 0.1,
+    "instant_break_torque": 1e8,
+    "max_breaks_per_step": 2,
+  },
+}
