@@ -2,38 +2,6 @@ import numpy as np
 import warp as wp
 
 
-def health_to_color(health):
-    if health <= 0.0:
-        return (0.9, 0.15, 0.1)
-    elif health <= 0.25:
-        interp_factor = health / 0.25
-        return (
-            0.9 + interp_factor * 0.1,
-            0.15 + interp_factor * 0.4,
-            0.1 - interp_factor * 0.1,
-        )
-    elif health <= 0.5:
-        interp_factor = (health - 0.25) / 0.25
-        return (
-            1.0 - interp_factor * 0.05,
-            0.55 + interp_factor * 0.35,
-            interp_factor * 0.1,
-        )
-    elif health <= 0.75:
-        interp_factor = (health - 0.5) / 0.25
-        return (
-            0.95 - interp_factor * 0.75,
-            0.9 - interp_factor * 0.05,
-            0.1 + interp_factor * 0.7,
-        )
-    else:
-        interp_factor = (health - 0.75) / 0.25
-        return (
-            0.2 + interp_factor * 0.15,
-            0.85 - interp_factor * 0.15,
-            0.8 + interp_factor * 0.15,
-        )
-
 
 def health_to_colors(health_values):
     health_values = np.asarray(health_values, dtype=np.float32)

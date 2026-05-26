@@ -1,7 +1,7 @@
 from src.mesh.load_obj import load_obj
 from src.voxels.voxel_gpu import voxelize_gpu
 from src.rendering.renderer import Renderer
-from src.physics.joints import JointBreaker, health_to_color
+from src.physics.joints import JointBreaker
 from src.rendering.draw_helpers import (
     perspective_matrix,
     look_at_matrix,
@@ -20,6 +20,5 @@ __all__ = [
     "compute_vertex_normals",
     "batch_quat_to_mat3",
     "JointBreaker",
-    "health_to_color",
     "load_config",
 ]
