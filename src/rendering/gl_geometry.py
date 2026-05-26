@@ -96,26 +96,10 @@ def make_uv_sphere(slices=8, stacks=12):
         for j in range(slices):
             phi0 = 2.0 * math.pi * j / slices
             phi1 = 2.0 * math.pi * (j + 1) / slices
-            p00 = (
-                math.sin(theta0) * math.cos(phi0),
-                math.sin(theta0) * math.sin(phi0),
-                math.cos(theta0),
-            )
-            p10 = (
-                math.sin(theta1) * math.cos(phi0),
-                math.sin(theta1) * math.sin(phi0),
-                math.cos(theta1),
-            )
-            p01 = (
-                math.sin(theta0) * math.cos(phi1),
-                math.sin(theta0) * math.sin(phi1),
-                math.cos(theta0),
-            )
-            p11 = (
-                math.sin(theta1) * math.cos(phi1),
-                math.sin(theta1) * math.sin(phi1),
-                math.cos(theta1),
-            )
+            p00 = (math.sin(theta0) * math.cos(phi0), math.sin(theta0) * math.sin(phi0), math.cos(theta0))
+            p10 = (math.sin(theta1) * math.cos(phi0), math.sin(theta1) * math.sin(phi0), math.cos(theta1))
+            p01 = (math.sin(theta0) * math.cos(phi1), math.sin(theta0) * math.sin(phi1), math.cos(theta0))
+            p11 = (math.sin(theta1) * math.cos(phi1), math.sin(theta1) * math.sin(phi1), math.cos(theta1))
             for p in [p00, p10, p11, p00, p11, p01]:
                 verts.extend(p)
                 verts.extend(p)
@@ -123,29 +107,7 @@ def make_uv_sphere(slices=8, stacks=12):
 
 
 def make_ground_quad(size=30.0):
-    verts = np.array(
-        [
-            -size,
-            -size,
-            0,
-            size,
-            -size,
-            0,
-            size,
-            size,
-            0,
-            -size,
-            -size,
-            0,
-            size,
-            size,
-            0,
-            -size,
-            size,
-            0,
-        ],
-        dtype=np.float32,
-    )
+    verts = np.array([-size, -size, 0, size, -size, 0, size, size, 0, -size, -size, 0, size, size, 0, -size, size, 0], dtype=np.float32)
     return verts, 6
 
 

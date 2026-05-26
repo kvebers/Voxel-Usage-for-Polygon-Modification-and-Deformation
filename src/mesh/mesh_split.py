@@ -13,17 +13,7 @@ from src.utils.math_utils import batch_quat_to_mat3
 
 
 class MeshSplitter:
-    def __init__(
-        self,
-        indices,
-        bindings,
-        offsets,
-        n_voxels,
-        neighbor_pairs,
-        positions,
-        voxel_half,
-        mesh_verts,
-    ):
+    def __init__(self, indices, bindings, offsets, n_voxels, neighbor_pairs, positions, voxel_half, mesh_verts):
         self.BASE_ROT = DEFAULT_ROTATION_ELEMENT
         self.build_adjacency(n_voxels, neighbor_pairs)
         vox_tree, positions_arr = self.compute_voxel_centers(positions, mesh_verts, bindings, offsets, n_voxels)

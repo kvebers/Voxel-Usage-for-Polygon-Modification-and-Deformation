@@ -4,11 +4,7 @@ import numpy as np
 def compute_normals(pos, index_tris, n_verts):
     if len(index_tris) == 0:
         return np.zeros((n_verts, 3), dtype=np.float32)
-    v0, v1, v2 = (
-        pos[index_tris[:, 0]],
-        pos[index_tris[:, 1]],
-        pos[index_tris[:, 2]],
-    )
+    v0, v1, v2 = (pos[index_tris[:, 0]], pos[index_tris[:, 1]], pos[index_tris[:, 2]])
     fn = np.cross(v1 - v0, v2 - v0)
     fn_rep = np.repeat(fn, 3, axis=0)
     flat = index_tris.reshape(-1)

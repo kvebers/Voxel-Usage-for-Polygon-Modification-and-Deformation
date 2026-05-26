@@ -1,12 +1,6 @@
 import numpy as np
 import moderngl
-from src.rendering.voxel_render_ctx import (
-    get_cache,
-    update_vbo,
-    update_fbo,
-    update_ssbo,
-    render_and_read,
-)
+from src.rendering.voxel_render_ctx import get_cache, update_vbo, update_fbo, update_ssbo, render_and_read
 
 
 def preprocess_vertices(vertex_data, pad=0.01):

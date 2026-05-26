@@ -81,16 +81,7 @@ def get_cache(ctx):
     if ctx_id not in _cache:
         prog = ctx.program(vertex_shader=VERT_SRC, fragment_shader=FRAG_SRC)
         prog["u_mvp"].write(_ortho_mvp.tobytes())
-        _cache[ctx_id] = {
-            "prog": prog,
-            "fbo": None,
-            "fbo_res": 0,
-            "dummy_tex": None,
-            "ssbo": None,
-            "ssbo_size": 0,
-            "vbo": None,
-            "vbo_size": 0,
-        }
+        _cache[ctx_id] = {"prog": prog, "fbo": None, "fbo_res": 0, "dummy_tex": None, "ssbo": None, "ssbo_size": 0, "vbo": None, "vbo_size": 0}
     return _cache[ctx_id]
 
 

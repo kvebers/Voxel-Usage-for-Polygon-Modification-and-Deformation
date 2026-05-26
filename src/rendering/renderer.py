@@ -40,12 +40,7 @@ class ObjectRenderer:
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, self.mesh_ebo)
         index_data = mesh_indices.astype(np.uint32)
         self._mesh_ebo_capacity = max(len(index_data) * 3 * 4, index_data.nbytes)
-        glBufferData(
-            GL_ELEMENT_ARRAY_BUFFER,
-            self._mesh_ebo_capacity,
-            None,
-            GL_DYNAMIC_DRAW,
-        )
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, self._mesh_ebo_capacity, None, GL_DYNAMIC_DRAW)
         glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, index_data.nbytes, index_data)
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0)
         setup_mesh_vao(self.mesh_vao, self.mesh_vbo, self.mesh_ebo)
@@ -55,12 +50,7 @@ class ObjectRenderer:
         self.cube_inst_vbo = create_buffer(size=voxel_count * 64, usage=GL_DYNAMIC_DRAW)
         self.cube_color_vbo = create_buffer(size=voxel_count * 12, usage=GL_DYNAMIC_DRAW)
         self.voxel_vao = create_vao()
-        setup_instanced_color_vao(
-            self.voxel_vao,
-            renderer.cube_geom_vbo,
-            self.cube_inst_vbo,
-            self.cube_color_vbo,
-        )
+        setup_instanced_color_vao(self.voxel_vao, renderer.cube_geom_vbo, self.cube_inst_vbo, self.cube_color_vbo)
         self._voxel_pos_buf = self._voxel_pos_tex = None
         self._voxel_quat_buf = self._voxel_quat_tex = None
         self._last_valid_pos = None
@@ -182,18 +172,9 @@ class Renderer:
         self.prog_inst = compile_shader_program(VERT_INSTANCED, FRAG_BLINN)
         self.prog_inst_color = compile_shader_program(VERT_INSTANCED_COLOR, FRAG_BLINN_INSTANCED)
         self.prog_ground = compile_shader_program(VERT_GROUND, FRAG_GROUND)
-        self._uloc_mesh = _cache_locs(
-            self.prog_mesh,
-            ["uProj", "uView", "uColor", "uLightDir", "uCamPos", "uAmbient"],
-        )
-        self._uloc_inst = _cache_locs(
-            self.prog_inst,
-            ["uProj", "uView", "uColor", "uLightDir", "uCamPos", "uAmbient"],
-        )
-        self._uloc_inst_color = _cache_locs(
-            self.prog_inst_color,
-            ["uProj", "uView", "uLightDir", "uCamPos", "uAmbient"],
-        )
+        self._uloc_mesh = _cache_locs(self.prog_mesh, ["uProj", "uView", "uColor", "uLightDir", "uCamPos", "uAmbient"])
+        self._uloc_inst = _cache_locs(self.prog_inst, ["uProj", "uView", "uColor", "uLightDir", "uCamPos", "uAmbient"])
+        self._uloc_inst_color = _cache_locs(self.prog_inst_color, ["uProj", "uView", "uLightDir", "uCamPos", "uAmbient"])
         self._uloc_ground = _cache_locs(self.prog_ground, ["uProj", "uView"])
 
     def _setup_lighting(self):

@@ -19,14 +19,14 @@ vec3 quatRotate(vec4 quaternion, vec3 inputVector) {
 }
 
 void main() {
-    int  voxelIndex    = int(aVoxelBinding);
+    int  voxelIndex = int(aVoxelBinding);
     vec3 voxelPosition = texelFetch(uVoxelPos,  voxelIndex).xyz;
     vec4 voxelRotation = texelFetch(uVoxelQuat, voxelIndex);
 
     vec4 worldPosition = vec4(voxelPosition + quatRotate(voxelRotation, aLocalOffset), 1.0);
-    vWorldPosition     = worldPosition.xyz;
-    vSurfaceNormal     = normalize(quatRotate(voxelRotation, aRestNormal));
-    gl_Position        = uProj * uView * worldPosition;
+    vWorldPosition = worldPosition.xyz;
+    vSurfaceNormal = normalize(quatRotate(voxelRotation, aRestNormal));
+    gl_Position = uProj * uView * worldPosition;
 }
 """
 
@@ -43,7 +43,7 @@ uniform float uAmbient;
 out vec4 FragColor;
 
 void main() {
-    vec3  surfaceNormal  = normalize(vSurfaceNormal);
+    vec3  surfaceNormal = normalize(vSurfaceNormal);
     vec3  lightDirection = normalize(uLightDir);
     float diffuseFactor = max(dot(surfaceNormal, lightDirection), 0.0);
 
@@ -102,11 +102,9 @@ void main() {
     vec3  surfaceNormal = normalize(vSurfaceNormal);
     vec3  lightDirection = normalize(uLightDir);
     float diffuseFactor = max(dot(surfaceNormal, lightDirection), 0.0);
-
     vec3  viewDirection = normalize(uCamPos - vWorldPosition);
     vec3  halfVector = normalize(lightDirection + viewDirection);
     float specularFactor = pow(max(dot(surfaceNormal, halfVector), 0.0), 64.0);
-
     vec3 finalColor = vInstanceColor * (uAmbient + diffuseFactor * 0.7) + vec3(1.0) * specularFactor * 0.3;
     FragColor = vec4(finalColor, 1.0);
 }

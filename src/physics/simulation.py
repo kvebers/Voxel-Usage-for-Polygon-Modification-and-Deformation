@@ -25,11 +25,7 @@ def assisted_mesh_splitters(joint_breakers, mesh_splitters):
 def step_simulation(scene, sim, joint_breakers, mesh_splitters, force_appliers):
     state_current, state_next = scene["state_current"], scene["state_next"]
     model = scene["model"]
-    control, contacts, solver = (
-        scene["control"],
-        scene["contacts"],
-        scene["solver"],
-    )
+    control, contacts, solver = (scene["control"], scene["contacts"], scene["solver"])
     device = wp.get_cuda_device()
     state_current.clear_forces()
     for force_applier, joint_breaker in zip(force_appliers, joint_breakers):

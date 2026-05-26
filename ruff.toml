@@ -1,4 +1,4 @@
-line-length = 120
+line-length = 160
 target-version = "py313"
 
 [lint]
@@ -21,3 +21,4 @@ ignore = [
 quote-style = "double"
 indent-style = "space"
 line-ending = "lf"
+skip-magic-trailing-comma = true

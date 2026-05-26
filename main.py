@@ -9,6 +9,7 @@ from src.utils.parse_args import parse_args
 
 wp.init()
 
+
 def main(scene_file="scene.json", record=None):
     cfg, all_obj_data, scene = load_and_build_scene(scene_file)
     obj_list, joint_breakers, mesh_splitters, force_appliers = create_components(all_obj_data, scene, cfg)
@@ -16,23 +17,17 @@ def main(scene_file="scene.json", record=None):
     camera = init_camera(cfg)
     sim_state = init_sim_state(cfg)
     recorder = VideoRecorder(record, width, height, sim_state["fps"]) if record else None
-    run_simulation_loop(
-        scene,
-        sim_state,
-        camera,
-        cfg,
-        obj_list,
-        joint_breakers,
-        mesh_splitters,
-        force_appliers,
-        renderer,
-        recorder,
-        width,
-        height,
-    )
+    run_simulation_loop(scene, sim_state, camera, cfg, obj_list, joint_breakers, mesh_splitters, force_appliers, renderer, recorder, width, height)
     pygame.quit()
 
 
 if __name__ == "__main__":
+    print("""
+    I am not sure that the code will work.
+    The code is supported for the NVIDIA systems.
+    I forgot to add the elasticity function in the paper so there is that.
+    I think that one is very fun to play around.
+    Have a nice day!
+    """)
     scene_file, record = parse_args()
     main(scene_file=scene_file, record=record)

@@ -1,6 +1,10 @@
 # Voxel Usage for Polygon Modification and Deformation
 
-[![Demo](https://img.youtube.com/vi/RO1Zv-oruCY/0.jpg)](https://youtu.be/RO1Zv-oruCY)
+![Function map to be updated](mind_map.svg)
+
+<a href="https://youtu.be/RO1Zv-oruCY">
+  <img src="https://img.youtube.com/vi/RO1Zv-oruCY/0.jpg" width="960">
+</a>
 
 Voxel Based approach for deformation and modification of polygon models.
 Tested on 4GB VRAM, less would be quiet difficult. Also NVIDIA Graphic Card needed.

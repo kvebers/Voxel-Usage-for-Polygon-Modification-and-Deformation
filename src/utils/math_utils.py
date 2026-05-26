@@ -52,6 +52,7 @@ def quat_to_mat4(q, pos):
     return matrix
 
 
+# does spinning
 def batch_quat_to_mat3(q):
     x, y, z, w = q[:, 0], q[:, 1], q[:, 2], q[:, 3]
     x2, y2, z2 = x * x, y * y, z * z

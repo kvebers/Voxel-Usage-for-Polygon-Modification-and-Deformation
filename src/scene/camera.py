@@ -45,11 +45,11 @@ def movement(cam):
     if not any([keys[K_w], keys[K_s], keys[K_a], keys[K_d], keys[K_q], keys[K_e]]):
         return
     speed = cam["speed"]
-    fwd, right, up = camera_vectors(cam["yaw"])
+    forward, right, up = camera_vectors(cam["yaw"])
     if keys[K_w]:
-        cam["position"] += fwd * speed
+        cam["position"] += forward * speed
     if keys[K_s]:
-        cam["position"] -= fwd * speed
+        cam["position"] -= forward * speed
     if keys[K_d]:
         cam["position"] += right * speed
     if keys[K_a]:
@@ -66,13 +66,6 @@ def compute_view_projection(cam, width, height):
     eye = cam["position"]
     yaw_r = math.radians(cam["yaw"])
     pitch_r = math.radians(cam["pitch"])
-    look_fwd = np.array(
-        [
-            -math.cos(pitch_r) * math.cos(yaw_r),
-            -math.cos(pitch_r) * math.sin(yaw_r),
-            -math.sin(pitch_r),
-        ],
-        dtype=np.float32,
-    )
-    view = look_at_matrix(eye, eye + look_fwd, np.array([0, 0, 1], np.float32))
+    look_forward = np.array([-math.cos(pitch_r) * math.cos(yaw_r), -math.cos(pitch_r) * math.sin(yaw_r), -math.sin(pitch_r)], dtype=np.float32)
+    view = look_at_matrix(eye, eye + look_forward, np.array([0, 0, 1], np.float32))
     return proj, view, eye

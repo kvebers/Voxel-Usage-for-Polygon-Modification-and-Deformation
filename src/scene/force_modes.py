@@ -19,7 +19,6 @@ def drifting_bug_fix_up(lin_vel, voxel_mass):
     return (DRIFT_DAMP_BUG_FIX_COEFF * voxel_mass) * lin_vel * blend
 
 
-
 def elastic_restoring_delta(displacement, lin_vel, labels, stiffness, damping, voxel_mass):
     deformation = subtract_component_mean(displacement, labels)
     delta = (stiffness * voxel_mass) * deformation
@@ -30,16 +29,7 @@ def elastic_restoring_delta(displacement, lin_vel, labels, stiffness, damping, v
 
 
 class ForceApplier:
-    def __init__(
-        self,
-        rest_positions,
-        voxel_body_start,
-        voxel_count,
-        stiffness=0.0,
-        damping=0.0,
-        voxel_mass=1.0,
-        neighbor_pairs=None,
-    ):
+    def __init__(self, rest_positions, voxel_body_start, voxel_count, stiffness=0.0, damping=0.0, voxel_mass=1.0, neighbor_pairs=None):
         self.voxel_body_start = voxel_body_start
         self.stiffness = float(stiffness)
         self.damping = float(damping)
@@ -64,12 +54,7 @@ class ForceApplier:
         else:
             labels = np.zeros(voxel_count, dtype=np.int32)
         body_f[voxel_body_start : voxel_body_start + voxel_count, :3] -= elastic_restoring_delta(
-            displacement,
-            lin_vel,
-            labels,
-            self.stiffness,
-            self.damping,
-            voxel_mass,
+            displacement, lin_vel, labels, self.stiffness, self.damping, voxel_mass
         )
         state.body_f = wp.array(body_f, dtype=state.body_f.dtype, device=device)
 

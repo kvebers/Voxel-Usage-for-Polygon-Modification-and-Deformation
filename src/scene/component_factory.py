@@ -26,22 +26,10 @@ def create_components(all_obj_data, scene, cfg):
     force_appliers = []
     for obj_data, obj_scene in zip(all_obj_data, scene["objects"]):
         joint_breaker = create_joint_breaker(obj_scene, scene["model"], cfg)
-        mesh_splitter = create_mesh_splitter(
-            obj_data["indices"],
-            obj_scene,
-            obj_data["centered_verts"],
-            obj_scene["neighbor_pairs"],
-        )
+        mesh_splitter = create_mesh_splitter(obj_data["indices"], obj_scene, obj_data["centered_verts"], obj_scene["neighbor_pairs"])
         if len(joint_breaker.broken) > 0:
             mesh_splitter.set_broken(joint_breaker.broken)
-        obj_list.append(
-            {
-                "scene": obj_scene,
-                "mesh_splitter": mesh_splitter,
-                "joint_breaker": joint_breaker,
-                "color": obj_data["color"],
-            }
-        )
+        obj_list.append({"scene": obj_scene, "mesh_splitter": mesh_splitter, "joint_breaker": joint_breaker, "color": obj_data["color"]})
         joint_breakers.append(joint_breaker)
         mesh_splitters.append(mesh_splitter)
         force_appliers.append(create_force_applier(obj_scene, cfg))
@@ -54,10 +42,7 @@ def init_renderer(scene, obj_list, all_obj_data, cfg):
     for i, obj in enumerate(obj_list):
         obj_scene = obj["scene"]
         obj_renderer = renderer.create_object_renderer(
-            all_obj_data[i]["indices"],
-            obj_scene["voxel_count"],
-            obj_scene["half"],
-            block_halves=obj_scene["block_halves_world"],
+            all_obj_data[i]["indices"], obj_scene["voxel_count"], obj_scene["half"], block_halves=obj_scene["block_halves_world"]
         )
         obj_renderer.setup_gpu_deform(obj["mesh_splitter"])
         obj["obj_renderer"] = obj_renderer

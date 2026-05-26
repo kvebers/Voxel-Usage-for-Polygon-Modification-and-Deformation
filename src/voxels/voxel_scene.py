@@ -7,9 +7,7 @@ from src.voxels.voxel_topology import greedy_merge_grid, build_block_topology
 
 def build_greedy_mesh_topology(active_grid):
     blocks = greedy_merge_grid(active_grid)
-    block_centers, block_halves_voxel, neighbor_pairs, joint_voxel_offsets = build_block_topology(
-        blocks, active_grid.shape
-    )
+    block_centers, block_halves_voxel, neighbor_pairs, joint_voxel_offsets = build_block_topology(blocks, active_grid.shape)
     coords = [tuple(float(v) for v in c) for c in block_centers]
     return coords, {}, neighbor_pairs, block_halves_voxel, joint_voxel_offsets
 
@@ -23,24 +21,11 @@ def build_mesh_topology(active_grid):
         for dx, dy, dz in [(1, 0, 0), (0, 1, 0), (0, 0, 1)]:
             neighbor_coord = (ix + dx, iy + dy, iz + dz)
             if neighbor_coord in coord_to_index:
-                neighbor_pairs.append(
-                    (
-                        coord_to_index[(ix, iy, iz)],
-                        coord_to_index[neighbor_coord],
-                    )
-                )
+                neighbor_pairs.append((coord_to_index[(ix, iy, iz)], coord_to_index[neighbor_coord]))
     return coords, coord_to_index, neighbor_pairs, None, None
 
 
-def voxelize_and_build_topology(
-    mesh_verts,
-    mesh_indices,
-    resolution=32,
-    fill_mode=True,
-    ensure_connected=False,
-    greedy_merge=False,
-    ctx=None,
-):
+def voxelize_and_build_topology(mesh_verts, mesh_indices, resolution=32, fill_mode=True, ensure_connected=False, greedy_merge=False, ctx=None):
     tri_verts = mesh_verts[mesh_indices].reshape(-1, 3)
     grid_filled = voxelize_gpu(tri_verts, resolution=resolution, ctx=ctx)
     if fill_mode:
@@ -53,31 +38,10 @@ def voxelize_and_build_topology(
         active_grid = repair_isolated_voxels(active_grid, grid_filled)
 
     if greedy_merge:
-        (
-            coords,
-            coord_to_index,
-            neighbor_pairs,
-            block_halves_voxel,
-            joint_voxel_offsets,
-        ) = build_greedy_mesh_topology(active_grid)
+        (coords, coord_to_index, neighbor_pairs, block_halves_voxel, joint_voxel_offsets) = build_greedy_mesh_topology(active_grid)
     else:
-        (
-            coords,
-            coord_to_index,
-            neighbor_pairs,
-            block_halves_voxel,
-            joint_voxel_offsets,
-        ) = build_mesh_topology(active_grid)
-    return (
-        grid_filled,
-        grid_hollow,
-        active_grid,
-        coords,
-        coord_to_index,
-        neighbor_pairs,
-        block_halves_voxel,
-        joint_voxel_offsets,
-    )
+        (coords, coord_to_index, neighbor_pairs, block_halves_voxel, joint_voxel_offsets) = build_mesh_topology(active_grid)
+    return (grid_filled, grid_hollow, active_grid, coords, coord_to_index, neighbor_pairs, block_halves_voxel, joint_voxel_offsets)
 
 
 def bind_vertices_to_voxels(mesh_verts, coords, coord_to_index, grid_min, voxel_size, resolution):

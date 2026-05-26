@@ -2,7 +2,6 @@ import numpy as np
 import warp as wp
 
 
-
 def health_to_colors(health_values):
     health_values = np.asarray(health_values, dtype=np.float32)
     r = np.empty_like(health_values)
@@ -34,16 +33,7 @@ def health_to_colors(health_values):
 
 
 class JointBreaker:
-    def __init__(
-        self,
-        scene,
-        model,
-        angular_break_torque=5e5,
-        damage_rate=0.4,
-        heal_rate=0.05,
-        instant_break_torque=2e6,
-        max_breaks_per_step=5,
-    ):
+    def __init__(self, scene, model, angular_break_torque=5e5, damage_rate=0.4, heal_rate=0.05, instant_break_torque=2e6, max_breaks_per_step=5):
         self.neighbor_pairs = scene["neighbor_pairs"]
         self.positions = scene["positions"]
         self.vbs = scene["voxel_body_start"]
@@ -101,11 +91,7 @@ class JointBreaker:
         self.damage = np.where(
             active & (norm_stress > 0.0),
             np.minimum(1.0, self.damage + norm_stress * self.damage_rate * dt * 60.0),
-            np.where(
-                active,
-                np.maximum(0.0, self.damage - self.heal_rate * dt * 60.0),
-                self.damage,
-            ),
+            np.where(active, np.maximum(0.0, self.damage - self.heal_rate * dt * 60.0), self.damage),
         )
         return instant
 
@@ -150,12 +136,7 @@ class JointBreaker:
 
     def get_penalty_data(self):
         solver = self.solver
-        return (
-            solver.joint_penalty_k.numpy(),
-            solver.joint_penalty_k_max.numpy(),
-            solver.joint_penalty_kd.numpy(),
-            solver.joint_penalty_k_min.numpy(),
-        )
+        return (solver.joint_penalty_k.numpy(), solver.joint_penalty_k_max.numpy(), solver.joint_penalty_kd.numpy(), solver.joint_penalty_k_min.numpy())
 
     def get_state_data(self):
         solver = self.solver

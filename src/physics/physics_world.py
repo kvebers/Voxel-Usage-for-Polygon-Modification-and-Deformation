@@ -1,19 +1,9 @@
 import numpy as np
 import warp as wp
 import newton
-from src.voxels.voxel_scene import (
-    create_voxel_geometry,
-    get_voxel_positions,
-    bind_vertices_to_voxels,
-)
+from src.voxels.voxel_scene import create_voxel_geometry, get_voxel_positions, bind_vertices_to_voxels
 from src.scene_setup import scale_greedy_to_world
-from src.physics.physics_bodies import (
-    add_ground,
-    add_voxel_bodies,
-    add_ball,
-    add_joints,
-    create_solver,
-)
+from src.physics.physics_bodies import add_ground, add_voxel_bodies, add_ball, add_joints, create_solver
 from src.physics.joints import JointBreaker
 from src.mesh.mesh_split import MeshSplitter
 
@@ -27,20 +17,8 @@ def compute_object_world_geometry(obj_data, cfg):
     extent, _, voxel_size, half, grid_min = create_voxel_geometry(mesh_verts, resolution, cfg)
     positions = get_voxel_positions(coords, resolution, cfg, mesh_verts, half, world_offset=world_offset)
     bindings, offsets = bind_vertices_to_voxels(mesh_verts, coords, coord_to_index, grid_min, voxel_size, resolution)
-    block_halves_world, joint_world_offsets = scale_greedy_to_world(
-        obj_data["block_halves_voxel"],
-        obj_data["joint_voxel_offsets"],
-        voxel_size,
-    )
-    return (
-        positions,
-        bindings,
-        offsets,
-        block_halves_world,
-        joint_world_offsets,
-        extent,
-        half,
-    )
+    block_halves_world, joint_world_offsets = scale_greedy_to_world(obj_data["block_halves_voxel"], obj_data["joint_voxel_offsets"], voxel_size)
+    return (positions, bindings, offsets, block_halves_world, joint_world_offsets, extent, half)
 
 
 def finalize_model(builder, cfg):
@@ -61,26 +39,12 @@ def add_objects_to_builder(builder, all_obj_data, cfg):
 
     for obj_data in all_obj_data:
         neighbor_pairs = obj_data["neighbor_pairs"]
-        (
-            positions,
-            bindings,
-            offsets,
-            block_halves_world,
-            joint_world_offsets,
-            extent,
-            half,
-        ) = compute_object_world_geometry(obj_data, cfg)
+        (positions, bindings, offsets, block_halves_world, joint_world_offsets, extent, half) = compute_object_world_geometry(obj_data, cfg)
         if first_extent is None:
             first_extent = (extent, half)
         voxel_body_start = add_voxel_bodies(builder, positions, half, cfg, block_halves_world=block_halves_world)
         if cfg.joints.enabled:
-            add_joints(
-                builder,
-                neighbor_pairs,
-                positions,
-                voxel_body_start,
-                joint_world_offsets=joint_world_offsets,
-            )
+            add_joints(builder, neighbor_pairs, positions, voxel_body_start, joint_world_offsets=joint_world_offsets)
         all_positions_list.append(positions)
         per_obj.append(
             {

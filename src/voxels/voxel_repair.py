@@ -5,15 +5,7 @@ from scipy.spatial import KDTree
 
 def poly_struct():
     face_struct = np.zeros((3, 3, 3), dtype=bool)
-    for index in [
-        (1, 1, 1),
-        (0, 1, 1),
-        (2, 1, 1),
-        (1, 0, 1),
-        (1, 2, 1),
-        (1, 1, 0),
-        (1, 1, 2),
-    ]:
+    for index in [(1, 1, 1), (0, 1, 1), (2, 1, 1), (1, 0, 1), (1, 2, 1), (1, 1, 0), (1, 1, 2)]:
         face_struct[index] = True
     kernel = face_struct.copy()
     kernel[1, 1, 1] = False

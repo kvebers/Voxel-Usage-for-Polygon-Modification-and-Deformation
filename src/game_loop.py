@@ -19,13 +19,7 @@ def render_object(obj, transforms, sim, proj, view, eye):
     if sim["render_mode"] == "mesh":
         mesh_splitter.deform_split_mesh(transforms, voxel_body_start, voxel_count)
         obj_renderer.update_voxel_transforms(mesh_splitter.last_voxel_slice)
-        obj_renderer.draw_mesh_mode(
-            proj,
-            view,
-            eye,
-            tuple(obj["color"]),
-            index_count=mesh_splitter.current_index_count,
-        )
+        obj_renderer.draw_mesh_mode(proj, view, eye, tuple(obj["color"]), index_count=mesh_splitter.current_index_count)
     else:
         obj_renderer.update_voxel_instances(transforms, voxel_body_start)
         obj_renderer.update_voxel_colors(obj["joint_breaker"].get_voxel_colors())
@@ -64,20 +58,7 @@ def update_recording(recorder, sim, was_simulating):
         recorder.stop()
 
 
-def run_simulation_loop(
-    scene,
-    sim,
-    camera,
-    cfg,
-    obj_list,
-    joint_breakers,
-    mesh_splitters,
-    force_appliers,
-    renderer,
-    recorder,
-    width,
-    height,
-):
+def run_simulation_loop(scene, sim, camera, cfg, obj_list, joint_breakers, mesh_splitters, force_appliers, renderer, recorder, width, height):
     clock = pygame.time.Clock()
     was_simulating = sim["simulating"]
     running = True
