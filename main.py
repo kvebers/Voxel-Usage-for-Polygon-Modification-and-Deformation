@@ -23,10 +23,11 @@ def main(scene_file="scene.json", record=None):
 
 if __name__ == "__main__":
     print("""
-    I am not sure that the code will work.
+    I am not sure that the code will work for everyone!
     The code is supported for the NVIDIA systems.
-    I forgot to add the elasticity function in the paper so there is that.
-    I think that one is very fun to play around.
+    I forgot to add the elasticity,
+    damping function in the paper so there is that.
+    Just have fun play around!
     Have a nice day!
     """)
     scene_file, record = parse_args()
