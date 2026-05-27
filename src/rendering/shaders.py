@@ -95,6 +95,7 @@ in vec3 vInstanceColor;
 uniform vec3 uLightDir;
 uniform vec3 uCamPos;
 uniform float uAmbient;
+uniform float uAlpha;
 
 out vec4 FragColor;
 
@@ -106,7 +107,7 @@ void main() {
     vec3  halfVector = normalize(lightDirection + viewDirection);
     float specularFactor = pow(max(dot(surfaceNormal, halfVector), 0.0), 64.0);
     vec3 finalColor = vInstanceColor * (uAmbient + diffuseFactor * 0.7) + vec3(1.0) * specularFactor * 0.3;
-    FragColor = vec4(finalColor, 1.0);
+    FragColor = vec4(finalColor, uAlpha);
 }
 """
 

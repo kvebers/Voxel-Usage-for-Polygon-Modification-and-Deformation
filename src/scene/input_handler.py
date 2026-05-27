@@ -24,7 +24,8 @@ def handle_key_event(event, sim):
     elif event.key == K_c:
         sim["simulating"] = not sim["simulating"]
     elif event.key == K_v:
-        sim["render_mode"] = "voxel" if sim["render_mode"] == "mesh" else "mesh"
+        cycle = {"mesh": "combined",  "voxel": "mesh", "combined": "voxel",}
+        sim["render_mode"] = cycle.get(sim["render_mode"], "mesh")
     return True
 
 

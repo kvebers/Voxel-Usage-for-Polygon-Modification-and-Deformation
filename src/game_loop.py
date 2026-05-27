@@ -16,10 +16,18 @@ def render_object(obj, transforms, sim, proj, view, eye):
     mesh_splitter = obj["mesh_splitter"]
     voxel_body_start = obj_scene["voxel_body_start"]
     voxel_count = obj_scene["voxel_count"]
-    if sim["render_mode"] == "mesh":
+    mode = sim["render_mode"]
+    if mode == "mesh":
         mesh_splitter.deform_split_mesh(transforms, voxel_body_start, voxel_count)
         obj_renderer.update_voxel_transforms(mesh_splitter.last_voxel_slice)
         obj_renderer.draw_mesh_mode(proj, view, eye, tuple(obj["color"]), index_count=mesh_splitter.current_index_count)
+    elif mode == "combined":
+        mesh_splitter.deform_split_mesh(transforms, voxel_body_start, voxel_count)
+        obj_renderer.update_voxel_transforms(mesh_splitter.last_voxel_slice)
+        obj_renderer.draw_mesh_mode(proj, view, eye, tuple(obj["color"]), index_count=mesh_splitter.current_index_count)
+        obj_renderer.update_voxel_instances(transforms, voxel_body_start)
+        obj_renderer.update_voxel_colors(obj["joint_breaker"].get_voxel_colors())
+        obj_renderer.draw_voxels(proj, view, eye, alpha=0.5)
     else:
         obj_renderer.update_voxel_instances(transforms, voxel_body_start)
         obj_renderer.update_voxel_colors(obj["joint_breaker"].get_voxel_colors())

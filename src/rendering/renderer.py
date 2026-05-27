@@ -148,16 +148,25 @@ class ObjectRenderer:
         glDrawElements(GL_TRIANGLES, draw_count, GL_UNSIGNED_INT, None)
         glBindVertexArray(0)
 
-    def draw_voxels(self, proj, view, cam_pos):
+    def draw_voxels(self, proj, view, cam_pos, alpha=1.0):
         renderer = self._renderer
         locs = renderer._uloc_inst_color
         glUseProgram(renderer.prog_inst_color)
         glUniformMatrix4fv(locs["uProj"], 1, GL_TRUE, proj)
         glUniformMatrix4fv(locs["uView"], 1, GL_TRUE, view)
         glUniform3fv(locs["uCamPos"], 1, np.asarray(cam_pos))
+        glUniform1f(locs["uAlpha"], alpha)
+        transparent = alpha < 1.0
+        if transparent:
+            glEnable(GL_BLEND)
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+            glDepthMask(GL_FALSE)
         glBindVertexArray(self.voxel_vao)
         glDrawArraysInstanced(GL_TRIANGLES, 0, renderer.cube_vert_count, self.voxel_count)
         glBindVertexArray(0)
+        if transparent:
+            glDepthMask(GL_TRUE)
+            glDisable(GL_BLEND)
 
 
 class Renderer:
@@ -174,7 +183,7 @@ class Renderer:
         self.prog_ground = compile_shader_program(VERT_GROUND, FRAG_GROUND)
         self._uloc_mesh = _cache_locs(self.prog_mesh, ["uProj", "uView", "uColor", "uLightDir", "uCamPos", "uAmbient"])
         self._uloc_inst = _cache_locs(self.prog_inst, ["uProj", "uView", "uColor", "uLightDir", "uCamPos", "uAmbient"])
-        self._uloc_inst_color = _cache_locs(self.prog_inst_color, ["uProj", "uView", "uLightDir", "uCamPos", "uAmbient"])
+        self._uloc_inst_color = _cache_locs(self.prog_inst_color, ["uProj", "uView", "uLightDir", "uCamPos", "uAmbient", "uAlpha"])
         self._uloc_ground = _cache_locs(self.prog_ground, ["uProj", "uView"])
 
     def _setup_lighting(self):
@@ -187,6 +196,7 @@ class Renderer:
         glUseProgram(self.prog_inst_color)
         glUniform3fv(self._uloc_inst_color["uLightDir"], 1, LIGHT_DIR)
         glUniform1f(self._uloc_inst_color["uAmbient"], 0.4)
+        glUniform1f(self._uloc_inst_color["uAlpha"], 1.0)
         glUseProgram(0)
 
     def _setup_ground_geometry(self):
