@@ -41,6 +41,66 @@ def add_voxel_bodies(builder, positions, half, cfg, block_halves_world=None):
     return voxel_body_start
 
 
+def quat_from_rotation_matrix(R):
+    trace = R[0, 0] + R[1, 1] + R[2, 2]
+    if trace > 0:
+        s = 0.5 / np.sqrt(trace + 1.0)
+        w = 0.25 / s
+        x = (R[2, 1] - R[1, 2]) * s
+        y = (R[0, 2] - R[2, 0]) * s
+        z = (R[1, 0] - R[0, 1]) * s
+    elif R[0, 0] > R[1, 1] and R[0, 0] > R[2, 2]:
+        s = 2.0 * np.sqrt(1.0 + R[0, 0] - R[1, 1] - R[2, 2])
+        w = (R[2, 1] - R[1, 2]) / s
+        x = 0.25 * s
+        y = (R[0, 1] + R[1, 0]) / s
+        z = (R[0, 2] + R[2, 0]) / s
+    elif R[1, 1] > R[2, 2]:
+        s = 2.0 * np.sqrt(1.0 + R[1, 1] - R[0, 0] - R[2, 2])
+        w = (R[0, 2] - R[2, 0]) / s
+        x = (R[0, 1] + R[1, 0]) / s
+        y = 0.25 * s
+        z = (R[1, 2] + R[2, 1]) / s
+    else:
+        s = 2.0 * np.sqrt(1.0 + R[2, 2] - R[0, 0] - R[1, 1])
+        w = (R[1, 0] - R[0, 1]) / s
+        x = (R[0, 2] + R[2, 0]) / s
+        y = (R[1, 2] + R[2, 1]) / s
+        z = 0.25 * s
+    return wp.quat(float(x), float(y), float(z), float(w))
+
+
+def add_walls(builder, cfg):
+    walls_cfg = getattr(cfg, "walls", [])
+    if not walls_cfg:
+        return
+    for wall_config in walls_cfg:
+        # corners[0..3] define the visible face CCW from front; p0→p1 = local X, p0→p3 = local Y
+        corners = np.array(wall_config.corners, dtype=np.float64)
+        p0, p1, p2, p3 = corners[0], corners[1], corners[2], corners[3]
+        center = (p0 + p1 + p2 + p3) / 4.0
+        edge_x = p1 - p0
+        edge_y = p3 - p0
+        hx = float(np.linalg.norm(edge_x) / 2.0)
+        hy = float(np.linalg.norm(edge_y) / 2.0)
+        hz = float(wall_config.depth) / 2.0
+        right = edge_x / (2.0 * hx)
+        normal = np.cross(right, edge_y)
+        normal /= np.linalg.norm(normal)
+        up = np.cross(normal, right)
+        R = np.column_stack([right, up, normal])
+        q = quat_from_rotation_matrix(R)
+        wall_shape_cfg = newton.ModelBuilder.ShapeConfig(
+            density=0.0,
+            ke=wall_config.ke,
+            kd=wall_config.kd,
+            kf=wall_config.kf,
+            mu=wall_config.mu,
+        )
+        builder.add_body(xform=wp.transform(p=wp.vec3(float(center[0]), float(center[1]), float(center[2])), q=q))
+        builder.add_shape_box(body=builder.body_count - 1, hx=hx, hy=hy, hz=hz, cfg=wall_shape_cfg)
+
+
 def add_ball(builder, positions, half, extent, cfg):
     balls_cfg = getattr(cfg, "balls", [])
     if not balls_cfg:

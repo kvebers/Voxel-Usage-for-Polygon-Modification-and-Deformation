@@ -201,16 +201,21 @@ class Renderer:
         self._setup_lighting()
         self._setup_ground_geometry()
         self._setup_sphere_geometry()
+        self._wall_vaos = []
+        self._wall_vert_counts = []
+        self._wall_colors = []
 
     def _compile_programs(self):
         self.prog_mesh = compile_shader_program(VERT_MESH, FRAG_BLINN)
         self.prog_inst = compile_shader_program(VERT_INSTANCED, FRAG_BLINN)
         self.prog_inst_color = compile_shader_program(VERT_INSTANCED_COLOR, FRAG_BLINN_INSTANCED)
         self.prog_ground = compile_shader_program(VERT_GROUND, FRAG_GROUND)
+        self.prog_wall = compile_shader_program(VERT_WALL, FRAG_BLINN)
         self._uloc_mesh = _cache_locs(self.prog_mesh, ["uProj", "uView", "uColor", "uLightDir", "uCamPos", "uAmbient"])
         self._uloc_inst = _cache_locs(self.prog_inst, ["uProj", "uView", "uColor", "uLightDir", "uCamPos", "uAmbient"])
         self._uloc_inst_color = _cache_locs(self.prog_inst_color, ["uProj", "uView", "uLightDir", "uCamPos", "uAmbient", "uAlpha"])
         self._uloc_ground = _cache_locs(self.prog_ground, ["uProj", "uView"])
+        self._uloc_wall = _cache_locs(self.prog_wall, ["uProj", "uView", "uColor", "uLightDir", "uCamPos", "uAmbient"])
 
     def _setup_lighting(self):
         glUseProgram(self.prog_mesh)
@@ -223,6 +228,9 @@ class Renderer:
         glUniform3fv(self._uloc_inst_color["uLightDir"], 1, LIGHT_DIR)
         glUniform1f(self._uloc_inst_color["uAmbient"], 0.4)
         glUniform1f(self._uloc_inst_color["uAlpha"], 1.0)
+        glUseProgram(self.prog_wall)
+        glUniform3fv(self._uloc_wall["uLightDir"], 1, LIGHT_DIR)
+        glUniform1f(self._uloc_wall["uAmbient"], 0.4)
         glUseProgram(0)
 
     def _setup_ground_geometry(self):
@@ -258,6 +266,43 @@ class Renderer:
         glUniformMatrix4fv(locs["uView"], 1, GL_TRUE, view)
         glBindVertexArray(self.ground_vao)
         glDrawArrays(GL_TRIANGLES, 0, self.ground_vert_count)
+        glBindVertexArray(0)
+
+    def setup_walls(self, cfg):
+        walls_cfg = getattr(cfg, "walls", [])
+        for wall_config in walls_cfg:
+            corners = np.array(wall_config.corners, dtype=np.float32)
+            p0, p1, p2, p3 = corners[0], corners[1], corners[2], corners[3]
+            edge1 = p1 - p0
+            edge2 = p3 - p0
+            normal = np.cross(edge1, edge2).astype(np.float32)
+            n_len = np.linalg.norm(normal)
+            if n_len > 0:
+                normal /= n_len
+            verts = []
+            for p in [p0, p1, p2, p0, p2, p3]:
+                verts.extend(p)
+                verts.extend(normal)
+            data = np.array(verts, dtype=np.float32)
+            vao = create_vao()
+            vbo = create_buffer(data)
+            setup_wall_vao(vao, vbo)
+            self._wall_vaos.append(vao)
+            self._wall_vert_counts.append(6)
+            self._wall_colors.append(getattr(wall_config, "color", [0.55, 0.60, 0.65]))
+
+    def draw_walls(self, proj, view, cam_pos):
+        if not self._wall_vaos:
+            return
+        locs = self._uloc_wall
+        glUseProgram(self.prog_wall)
+        glUniformMatrix4fv(locs["uProj"], 1, GL_TRUE, proj)
+        glUniformMatrix4fv(locs["uView"], 1, GL_TRUE, view)
+        glUniform3fv(locs["uCamPos"], 1, np.asarray(cam_pos, dtype=np.float32))
+        for vao, vert_count, color in zip(self._wall_vaos, self._wall_vert_counts, self._wall_colors):
+            glUniform3fv(locs["uColor"], 1, np.asarray(color, dtype=np.float32))
+            glBindVertexArray(vao)
+            glDrawArrays(GL_TRIANGLES, 0, vert_count)
         glBindVertexArray(0)
 
     def draw_ball(self, proj, view, cam_pos, color):

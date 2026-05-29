@@ -39,6 +39,7 @@ def create_components(all_obj_data, scene, cfg):
 def init_renderer(scene, obj_list, all_obj_data, cfg):
     width, height = init_window(cfg)
     renderer = Renderer()
+    renderer.setup_walls(cfg)
     for i, obj in enumerate(obj_list):
         obj_scene = obj["scene"]
         obj_renderer = renderer.create_object_renderer(

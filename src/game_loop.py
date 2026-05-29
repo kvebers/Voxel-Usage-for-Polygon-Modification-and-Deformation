@@ -44,6 +44,7 @@ def render_object(obj, transforms, sim, proj, view, eye):
 def render_frame(renderer, scene, sim, obj_list, proj, view, eye):
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
     renderer.draw_ground(proj, view)
+    renderer.draw_walls(proj, view, eye)
     transforms = scene["state_current"].body_q.numpy()
     for obj in obj_list:
         render_object(obj, transforms, sim, proj, view, eye)

@@ -68,6 +68,17 @@ def setup_instanced_color_vao(vao, geom_vbo, inst_vbo, color_vbo):
     glBindVertexArray(0)
 
 
+def setup_wall_vao(vao, vbo):
+    glBindVertexArray(vao)
+    glBindBuffer(GL_ARRAY_BUFFER, vbo)
+    stride = 6 * 4
+    glEnableVertexAttribArray(0)
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, ctypes.c_void_p(0))
+    glEnableVertexAttribArray(1)
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride, ctypes.c_void_p(12))
+    glBindVertexArray(0)
+
+
 def setup_ground_vao(vao, vbo):
     glBindVertexArray(vao)
     glBindBuffer(GL_ARRAY_BUFFER, vbo)

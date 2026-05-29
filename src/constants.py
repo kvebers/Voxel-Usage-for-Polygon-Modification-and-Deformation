@@ -69,8 +69,8 @@ DEFAULTS = {
         "ensure_connected": False,  # makes sure that voxels are connected to each other
         "greedy_merge": False,  # just merge the voxel grid
     },
-    # ball
     "balls": [],
+    "walls": [],
     "solver": {
         "iterations": 10,  # itterations need for stabilit / perfomance change lower to get more performance higer stability
         "rigid_body_contact_buffer_size": 4096,  # total buffer size lately found out bigger is better

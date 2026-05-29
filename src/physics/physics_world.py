@@ -3,7 +3,7 @@ import warp as wp
 import newton
 from src.voxels.voxel_scene import create_voxel_geometry, get_voxel_positions, bind_vertices_to_voxels
 from src.scene_setup import scale_greedy_to_world
-from src.physics.physics_bodies import add_ground, add_voxel_bodies, add_ball, add_joints, create_solver
+from src.physics.physics_bodies import add_ground, add_voxel_bodies, add_ball, add_walls, add_joints, create_solver
 from src.physics.joints import JointBreaker
 from src.mesh.mesh_split import MeshSplitter
 
@@ -81,6 +81,7 @@ def apply_ball_start_forces(state_current, state_next, ball_bodies, ball_cfgs):
 def build_scene_multi(all_obj_data, cfg):
     builder = newton.ModelBuilder()
     add_ground(builder, cfg)
+    add_walls(builder, cfg)
     per_obj, all_positions_list, first_extent = add_objects_to_builder(builder, all_obj_data, cfg)
     first_object_extent, first_voxel_half = first_extent
     all_positions = np.concatenate(all_positions_list, axis=0)
