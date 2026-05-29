@@ -194,16 +194,21 @@ class JointBreaker:
         solver.joint_dkappa_prev = wp.array(dkappa_prev, dtype=solver.joint_dkappa_prev.dtype, device=device)
         solver.joint_C_fric = wp.array(c_fric, dtype=solver.joint_C_fric.dtype, device=device)
 
-    def flush_to_solver(self, model, joint_enabled, device):
-        self._joint_enabled_cache = joint_enabled.copy()
-        model.joint_enabled = wp.array(joint_enabled, dtype=model.joint_enabled.dtype, device=device)
+    def suppress_broken_constraints(self, device):
+        if not self.enabled or not np.any(self.broken):
+            return
         penalty_arrays = self.get_penalty_data()
         self.no_broken_penalties(*penalty_arrays)
         self.sync_penalty_arrays(*penalty_arrays, device)
         state_arrays = self.get_state_data()
         self.no_broken_state(*state_arrays)
         self.sync_state_arrays(*state_arrays, device)
+
+    def flush_to_solver(self, model, joint_enabled, device):
+        self._joint_enabled_cache = joint_enabled.copy()
+        model.joint_enabled = wp.array(joint_enabled, dtype=model.joint_enabled.dtype, device=device)
         try:
             self.solver.notify_model_changed(None)
         except Exception:
             pass
+        self.suppress_broken_constraints(device)

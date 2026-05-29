@@ -32,7 +32,7 @@ def setup_mesh_vao(vao, vbo, ebo):
     glBindVertexArray(0)
 
 
-def setup_mesh_vao_gpu(vao, data_vbo, binding_vbo, ebo):
+def setup_mesh_vao_gpu(vao, data_vbo, blend_indices_vbo, blend_weights_vbo, ebo):
     glBindVertexArray(vao)
     glBindBuffer(GL_ARRAY_BUFFER, data_vbo)
     stride = 6 * 4
@@ -40,9 +40,12 @@ def setup_mesh_vao_gpu(vao, data_vbo, binding_vbo, ebo):
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, ctypes.c_void_p(0))
     glEnableVertexAttribArray(1)
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride, ctypes.c_void_p(12))
-    glBindBuffer(GL_ARRAY_BUFFER, binding_vbo)
+    glBindBuffer(GL_ARRAY_BUFFER, blend_indices_vbo)
     glEnableVertexAttribArray(2)
-    glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, 4, ctypes.c_void_p(0))
+    glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, 16, ctypes.c_void_p(0))
+    glBindBuffer(GL_ARRAY_BUFFER, blend_weights_vbo)
+    glEnableVertexAttribArray(3)
+    glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, 16, ctypes.c_void_p(0))
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo)
     glBindVertexArray(0)
 

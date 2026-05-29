@@ -19,12 +19,19 @@ def render_object(obj, transforms, sim, proj, view, eye):
     mode = sim["render_mode"]
     if mode == "mesh":
         mesh_splitter.deform_split_mesh(transforms, voxel_body_start, voxel_count)
+        if mesh_splitter._broken_dirty:
+            blend_idx, blend_wt = mesh_splitter.get_lbs_data()
+            obj_renderer.update_lbs_weights(blend_idx, blend_wt)
+            mesh_splitter._broken_dirty = False
         obj_renderer.update_voxel_transforms(mesh_splitter.last_voxel_slice)
         obj_renderer.draw_mesh_mode(proj, view, eye, tuple(obj["color"]), index_count=mesh_splitter.current_index_count)
     elif mode == "combined":
         mesh_splitter.deform_split_mesh(transforms, voxel_body_start, voxel_count)
+        if mesh_splitter._broken_dirty:
+            blend_idx, blend_wt = mesh_splitter.get_lbs_data()
+            obj_renderer.update_lbs_weights(blend_idx, blend_wt)
+            mesh_splitter._broken_dirty = False
         obj_renderer.update_voxel_transforms(mesh_splitter.last_voxel_slice)
-        obj_renderer.draw_mesh_mode(proj, view, eye, tuple(obj["color"]), index_count=mesh_splitter.current_index_count)
         obj_renderer.update_voxel_instances(transforms, voxel_body_start)
         obj_renderer.update_voxel_colors(obj["joint_breaker"].get_voxel_colors())
         obj_renderer.draw_voxels(proj, view, eye, alpha=0.5)

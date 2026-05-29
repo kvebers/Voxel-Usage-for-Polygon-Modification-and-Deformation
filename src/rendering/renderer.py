@@ -51,8 +51,9 @@ class ObjectRenderer:
         self.cube_color_vbo = create_buffer(size=voxel_count * 12, usage=GL_DYNAMIC_DRAW)
         self.voxel_vao = create_vao()
         setup_instanced_color_vao(self.voxel_vao, renderer.cube_geom_vbo, self.cube_inst_vbo, self.cube_color_vbo)
-        self._voxel_pos_buf = self._voxel_pos_tex = None
+        self._voxel_skin_t_buf = self._voxel_skin_t_tex = None
         self._voxel_quat_buf = self._voxel_quat_tex = None
+        self._vox_rest_pos = None
         self._last_valid_pos = None
         self._last_valid_quat = None
 
@@ -68,7 +69,7 @@ class ObjectRenderer:
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0)
         self.mesh_index_count = len(split_indices)
         static_vertex_data = np.empty((mesh_splitter.n_split_verts, 6), dtype=np.float32)
-        static_vertex_data[:, :3] = mesh_splitter.local_offsets
+        static_vertex_data[:, :3] = mesh_splitter.rest_vert_positions
         static_vertex_data[:, 3:] = mesh_splitter.rest_normals
         glBindBuffer(GL_ARRAY_BUFFER, self.mesh_vbo)
         if static_vertex_data.nbytes > self._mesh_vbo_capacity:
@@ -77,34 +78,59 @@ class ObjectRenderer:
         else:
             glBufferSubData(GL_ARRAY_BUFFER, 0, static_vertex_data.nbytes, static_vertex_data)
         glBindBuffer(GL_ARRAY_BUFFER, 0)
-        binding_data = mesh_splitter.split_bindings.astype(np.float32)
-        self.mesh_binding_vbo = create_buffer(binding_data, usage=GL_STATIC_DRAW)
-        self._voxel_pos_buf, self._voxel_pos_tex = _create_tbo(voxel_count * 12, GL_RGB32F)
+        blend_indices, blend_weights = mesh_splitter.get_lbs_data()
+        self.mesh_blend_idx_vbo = create_buffer(blend_indices, usage=GL_DYNAMIC_DRAW)
+        self.mesh_blend_wt_vbo = create_buffer(blend_weights, usage=GL_DYNAMIC_DRAW)
+        self._vox_rest_pos = np.ascontiguousarray(mesh_splitter._vox_rest_pos[:, :3], dtype=np.float32)
+        self._voxel_skin_t_buf, self._voxel_skin_t_tex = _create_tbo(voxel_count * 12, GL_RGB32F)
         self._voxel_quat_buf, self._voxel_quat_tex = _create_tbo(voxel_count * 16, GL_RGBA32F)
-        setup_mesh_vao_gpu(self.mesh_vao, self.mesh_vbo, self.mesh_binding_vbo, self.mesh_ebo)
+        setup_mesh_vao_gpu(self.mesh_vao, self.mesh_vbo, self.mesh_blend_idx_vbo, self.mesh_blend_wt_vbo, self.mesh_ebo)
         glUseProgram(self._renderer.prog_mesh)
-        glUniform1i(glGetUniformLocation(self._renderer.prog_mesh, "uVoxelPos"), 0)
+        glUniform1i(glGetUniformLocation(self._renderer.prog_mesh, "uVoxelSkinT"), 0)
         glUniform1i(glGetUniformLocation(self._renderer.prog_mesh, "uVoxelQuat"), 1)
         glUseProgram(0)
 
+    def update_lbs_weights(self, blend_indices, blend_weights):
+        glBindBuffer(GL_ARRAY_BUFFER, self.mesh_blend_idx_vbo)
+        glBufferSubData(GL_ARRAY_BUFFER, 0, blend_indices.nbytes, blend_indices)
+        glBindBuffer(GL_ARRAY_BUFFER, self.mesh_blend_wt_vbo)
+        glBufferSubData(GL_ARRAY_BUFFER, 0, blend_weights.nbytes, blend_weights)
+        glBindBuffer(GL_ARRAY_BUFFER, 0)
+
     def update_voxel_transforms(self, voxel_slice):
-        pos = np.ascontiguousarray(voxel_slice[:, :3])
+        pos  = np.ascontiguousarray(voxel_slice[:, :3])
         quat = np.ascontiguousarray(voxel_slice[:, 3:7])
 
         invalid_mask = ~np.isfinite(pos).all(axis=1)
         if invalid_mask.any():
             if self._last_valid_pos is not None:
-                pos[invalid_mask] = self._last_valid_pos[invalid_mask]
+                pos[invalid_mask]  = self._last_valid_pos[invalid_mask]
                 quat[invalid_mask] = self._last_valid_quat[invalid_mask]
         valid_mask = ~invalid_mask
         if self._last_valid_pos is None:
-            self._last_valid_pos = pos.copy()
+            self._last_valid_pos  = pos.copy()
             self._last_valid_quat = quat.copy()
         elif valid_mask.any():
-            self._last_valid_pos[valid_mask] = pos[valid_mask]
+            self._last_valid_pos[valid_mask]  = pos[valid_mask]
             self._last_valid_quat[valid_mask] = quat[valid_mask]
-        glBindBuffer(GL_TEXTURE_BUFFER, self._voxel_pos_buf)
-        glBufferSubData(GL_TEXTURE_BUFFER, 0, pos.nbytes, pos)
+
+        # skin_t[i] = curPos[i] - quatRotate(quat[i], restPos[i])
+        # Computed per voxel (cheap) so the shader needs only 2 TBO fetches per influence.
+        q  = quat.astype(np.float32)
+        rp = self._vox_rest_pos
+        x, y, z, w = q[:, 0], q[:, 1], q[:, 2], q[:, 3]
+        tx = 2.0 * (y * rp[:, 2] - z * rp[:, 1])
+        ty = 2.0 * (z * rp[:, 0] - x * rp[:, 2])
+        tz = 2.0 * (x * rp[:, 1] - y * rp[:, 0])
+        rotated_rest = np.stack([
+            rp[:, 0] + w * tx + y * tz - z * ty,
+            rp[:, 1] + w * ty + z * tx - x * tz,
+            rp[:, 2] + w * tz + x * ty - y * tx,
+        ], axis=1).astype(np.float32)
+        skin_t = np.ascontiguousarray(pos.astype(np.float32) - rotated_rest)
+
+        glBindBuffer(GL_TEXTURE_BUFFER, self._voxel_skin_t_buf)
+        glBufferSubData(GL_TEXTURE_BUFFER, 0, skin_t.nbytes, skin_t)
         glBindBuffer(GL_TEXTURE_BUFFER, 0)
         glBindBuffer(GL_TEXTURE_BUFFER, self._voxel_quat_buf)
         glBufferSubData(GL_TEXTURE_BUFFER, 0, quat.nbytes, quat)
@@ -140,7 +166,7 @@ class ObjectRenderer:
         glUniform3fv(locs["uColor"], 1, np.asarray(color, dtype=np.float32))
         glUniform3fv(locs["uCamPos"], 1, np.asarray(cam_pos))
         glActiveTexture(GL_TEXTURE0)
-        glBindTexture(GL_TEXTURE_BUFFER, self._voxel_pos_tex)
+        glBindTexture(GL_TEXTURE_BUFFER, self._voxel_skin_t_tex)
         glActiveTexture(GL_TEXTURE1)
         glBindTexture(GL_TEXTURE_BUFFER, self._voxel_quat_tex)
         glBindVertexArray(self.mesh_vao)

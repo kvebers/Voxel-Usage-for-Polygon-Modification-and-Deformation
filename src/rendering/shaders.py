@@ -1,10 +1,11 @@
 VERT_MESH = """
 #version 330 core
-layout(location = 0) in vec3 aLocalOffset;
+layout(location = 0) in vec3 aRestPos;
 layout(location = 1) in vec3 aRestNormal;
-layout(location = 2) in float aVoxelBinding;
+layout(location = 2) in vec4 aBlendIndices;
+layout(location = 3) in vec4 aBlendWeights;
 
-uniform samplerBuffer uVoxelPos;
+uniform samplerBuffer uVoxelSkinT;
 uniform samplerBuffer uVoxelQuat;
 
 uniform mat4 uProj;
@@ -13,20 +14,28 @@ uniform mat4 uView;
 out vec3 vWorldPosition;
 out vec3 vSurfaceNormal;
 
-vec3 quatRotate(vec4 quaternion, vec3 inputVector) {
-    vec3 crossTerm = 2.0 * cross(quaternion.xyz, inputVector);
-    return inputVector + quaternion.w * crossTerm + cross(quaternion.xyz, crossTerm);
+vec3 quatRotate(vec4 q, vec3 v) {
+    vec3 t = 2.0 * cross(q.xyz, v);
+    return v + q.w * t + cross(q.xyz, t);
+}
+
+void applyBone(int vi, float w, inout vec3 pos, inout vec3 norm) {
+    vec4 rot   = texelFetch(uVoxelQuat,  vi);
+    vec3 skinT = texelFetch(uVoxelSkinT, vi).xyz;
+    pos  += w * (skinT + quatRotate(rot, aRestPos));
+    norm += w * quatRotate(rot, aRestNormal);
 }
 
 void main() {
-    int  voxelIndex = int(aVoxelBinding);
-    vec3 voxelPosition = texelFetch(uVoxelPos,  voxelIndex).xyz;
-    vec4 voxelRotation = texelFetch(uVoxelQuat, voxelIndex);
-
-    vec4 worldPosition = vec4(voxelPosition + quatRotate(voxelRotation, aLocalOffset), 1.0);
-    vWorldPosition = worldPosition.xyz;
-    vSurfaceNormal = normalize(quatRotate(voxelRotation, aRestNormal));
-    gl_Position = uProj * uView * worldPosition;
+    vec3 worldPos  = vec3(0.0);
+    vec3 worldNorm = vec3(0.0);
+    applyBone(int(aBlendIndices.x), aBlendWeights.x, worldPos, worldNorm);
+    applyBone(int(aBlendIndices.y), aBlendWeights.y, worldPos, worldNorm);
+    applyBone(int(aBlendIndices.z), aBlendWeights.z, worldPos, worldNorm);
+    applyBone(int(aBlendIndices.w), aBlendWeights.w, worldPos, worldNorm);
+    vWorldPosition = worldPos;
+    vSurfaceNormal = normalize(worldNorm);
+    gl_Position    = uProj * uView * vec4(worldPos, 1.0);
 }
 """
 

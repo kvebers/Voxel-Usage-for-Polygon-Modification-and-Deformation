@@ -14,8 +14,8 @@ def subtract_component_mean(arr, labels):
 
 def drifting_bug_fix_up(lin_vel, voxel_mass):
     lin_vel = np.nan_to_num(lin_vel, nan=0.0, posinf=0.0, neginf=0.0)
-    speed = np.linalg.norm(lin_vel, axis=1, keepdims=True)
-    blend = 1.0 / (1.0 + (speed / DRIFT_DAMP_BUGFIX_THRESHOLD) ** 2)
+    speed_sq = np.sum(lin_vel.astype(np.float64) ** 2, axis=1, keepdims=True)
+    blend = (1.0 / (1.0 + speed_sq / (DRIFT_DAMP_BUGFIX_THRESHOLD ** 2))).astype(np.float32)
     return (DRIFT_DAMP_BUG_FIX_COEFF * voxel_mass) * lin_vel * blend
 
 

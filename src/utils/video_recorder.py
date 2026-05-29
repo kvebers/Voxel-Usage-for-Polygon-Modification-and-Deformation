@@ -13,8 +13,8 @@ class VideoRecorder:
         self.active = False
 
     def start(self):
-        flag_appender_params = ["-s", f"{self._width}x{self._height}", "-pix_fmt", "rgb24", "-r", str(self._fps), "-i", "pipe:0"]
-        flag_appender_vid = ["rawvideo", "-vcodec", "rawvideo", "-f", "-vcodec", "libx264", "-pix_fmt", "yuv420p", "-crf", "18"]
+        flag_appender_params = ["-f", "rawvideo", "-vcodec", "rawvideo", "-s", f"{self._width}x{self._height}", "-pix_fmt", "rgb24", "-r", str(self._fps), "-i", "pipe:0"]
+        flag_appender_vid = ["-vcodec", "libx264", "-pix_fmt", "yuv420p", "-crf", "18"]
         cmd = ["ffmpeg", "-y", *flag_appender_params, *flag_appender_vid, self._path]
         self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
         self.active = True

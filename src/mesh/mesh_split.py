@@ -5,9 +5,6 @@ from src.mesh.mesh_helpers import (
     compute_normals,
     compute_model_space_centers,
     build_vox_to_verts_index,
-    compute_normals,
-    compute_model_space_centers,
-    build_vox_to_verts_index,
 )
 from src.utils.math_utils import batch_quat_to_mat3
 
@@ -21,21 +18,88 @@ class MeshSplitter:
         self.compute_blend_weights(vox_tree, voxel_half, n_voxels)
         self.initialize_rest_geometry(positions_arr)
 
+    # --- connectivity ---
+
     def build_adjacency(self, n_voxels, neighbor_pairs):
         self.n_voxels = n_voxels
         self._adj_list = [[] for _ in range(n_voxels)]
-        self.joint_map = {}
         self._joint_pairs = list(neighbor_pairs)
         for joint_index, (voxel_a, voxel_b) in enumerate(neighbor_pairs):
             self._adj_list[voxel_a].append((voxel_b, joint_index))
             self._adj_list[voxel_b].append((voxel_a, joint_index))
-            self.joint_map[(min(voxel_a, voxel_b), max(voxel_a, voxel_b))] = joint_index
         self.broken = np.zeros(len(neighbor_pairs), dtype=bool)
         self._reach_mask = None
         self._broken_dirty = False
 
+    def bfs_voxels(self, starts, depth=3):
+        reachable = set(starts)
+        frontier = list(starts)
+        for _ in range(depth):
+            next_frontier = []
+            for voxel in frontier:
+                for neighbor_voxel, joint_index in self._adj_list[voxel]:
+                    if not self.broken[joint_index] and neighbor_voxel not in reachable:
+                        reachable.add(neighbor_voxel)
+                        next_frontier.append(neighbor_voxel)
+            frontier = next_frontier
+            if not frontier:
+                break
+        return reachable
+
+    def affected_voxels(self, newly_broken_joints, depth=3):
+        seeds = set()
+        for joint_index in newly_broken_joints:
+            voxel_a, voxel_b = self._joint_pairs[joint_index]
+            seeds.add(voxel_a)
+            seeds.add(voxel_b)
+        frontier = list(seeds)
+        visited = set(seeds)
+        for _ in range(depth):
+            next_frontier = []
+            for voxel in frontier:
+                for neighbor_voxel, _ in self._adj_list[voxel]:
+                    if neighbor_voxel not in visited:
+                        visited.add(neighbor_voxel)
+                        next_frontier.append(neighbor_voxel)
+            frontier = next_frontier
+            if not frontier:
+                break
+        return visited
+
+    def apply_reach_mask_for_voxels(self, voxels):
+        for voxel_index in voxels:
+            verts = self._vox_to_verts[voxel_index]
+            if not verts:
+                continue
+            reachable = self.bfs_voxels([voxel_index])
+            vi_arr = np.array(verts, dtype=np.int32)
+            reachable_arr = np.fromiter(reachable, dtype=np.int32)
+            self._reach_mask[vi_arr] = np.isin(self.blend_indices[vi_arr], reachable_arr)
+
+    def update_reach_mask(self):
+        k_neighbors = self.blend_indices.shape[1]
+        self._reach_mask = np.ones((self.n_split_verts, k_neighbors), dtype=bool)
+        self.apply_reach_mask_for_voxels(range(self.n_voxels))
+
+    def update_reach_mask_incremental(self, newly_broken_joints):
+        affected = self.affected_voxels(newly_broken_joints)
+        self.apply_reach_mask_for_voxels(affected)
+
+    def set_broken(self, broken):
+        if not np.array_equal(broken, self.broken):
+            newly_broken = np.where(broken & ~self.broken)[0]
+            self.broken = broken.copy()
+            if self._reach_mask is None or not newly_broken.size:
+                self.update_reach_mask()
+            else:
+                self.update_reach_mask_incremental(newly_broken)
+            self._broken_dirty = True
+
+    # --- geometry setup ---
+
     def compute_voxel_centers(self, positions, mesh_verts, bindings, offsets, n_voxels):
         positions_arr = np.array(positions, dtype=np.float32)
+        self._vox_rest_pos = positions_arr
         vox_centers_shifted = positions_arr @ self.BASE_ROT
         orig_bindings = np.array(bindings, dtype=np.int32)
         orig_offsets = np.array(offsets, dtype=np.float32).reshape(-1, 3)
@@ -101,88 +165,34 @@ class MeshSplitter:
 
     def compute_rest_positions(self, positions_arr):
         mask = self.split_bindings >= 0
-        voxel_bindings = self.split_bindings
         init_pos = np.empty((self.n_split_verts, 3), dtype=np.float32)
-        init_pos[mask] = positions_arr[voxel_bindings[mask]] + self.local_offsets[mask]
+        init_pos[mask] = positions_arr[self.split_bindings[mask]] + self.local_offsets[mask]
         return init_pos
 
     def initialize_rest_geometry(self, positions_arr):
-        self._cached_out = None
-        self._cached_index = None
         self._last_voxel_slice = None
-        self.gpu_dirty = True
         self.local_offsets = (self.BASE_ROT @ self.split_offsets.T).T
         init_pos = self.compute_rest_positions(positions_arr)
+        self.rest_vert_positions = init_pos
         self.rest_normals = compute_normals(init_pos, self.split_indices.reshape(-1, 3), self.n_split_verts)
         self.current_index_count = len(self.split_indices)
         self.update_reach_mask()
 
-    def set_broken(self, broken):
-        if not np.array_equal(broken, self.broken):
-            newly_broken = np.where(broken & ~self.broken)[0]
-            self.broken = broken.copy()
-            if self._reach_mask is None or not newly_broken.size:
-                self.update_reach_mask()
-            else:
-                self.update_reach_mask_incremental(newly_broken)
-            self._broken_dirty = True
+    # --- LBS data for GPU ---
 
-    def bfs_voxels(self, starts, depth=3):
-        reachable = set(starts)
-        frontier = list(starts)
-        for _ in range(depth):
-            next_frontier = []
-            for voxel in frontier:
-                for neighbor_voxel, joint_index in self._adj_list[voxel]:
-                    if not self.broken[joint_index] and neighbor_voxel not in reachable:
-                        reachable.add(neighbor_voxel)
-                        next_frontier.append(neighbor_voxel)
-            frontier = next_frontier
-            if not frontier:
-                break
-        return reachable
-
-    def affected_voxels(self, newly_broken_joints, depth=3):
-        seeds = set()
-        for joint_index in newly_broken_joints:
-            voxel_a, voxel_b = self._joint_pairs[joint_index]
-            seeds.add(voxel_a)
-            seeds.add(voxel_b)
-        frontier = list(seeds)
-        visited = set(seeds)
-        for _ in range(depth):
-            next_frontier = []
-            for voxel in frontier:
-                for neighbor_voxel, _ in self._adj_list[voxel]:
-                    if neighbor_voxel not in visited:
-                        visited.add(neighbor_voxel)
-                        next_frontier.append(neighbor_voxel)
-            frontier = next_frontier
-            if not frontier:
-                break
-        return visited
-
-    def apply_reach_mask_for_voxels(self, voxels):
-        for voxel_index in voxels:
-            verts = self._vox_to_verts[voxel_index]
-            if not verts:
-                continue
-            reachable = self.bfs_voxels([voxel_index])
-            vi_arr = np.array(verts, dtype=np.int32)
-            reachable_arr = np.fromiter(reachable, dtype=np.int32)
-            self._reach_mask[vi_arr] = np.isin(self.blend_indices[vi_arr], reachable_arr)
-
-    def update_reach_mask(self):
-        k_neighbors = self.blend_indices.shape[1]
-        if not np.any(self.broken):
-            self._reach_mask = np.ones((self.n_split_verts, k_neighbors), dtype=bool)
-            return
-        self._reach_mask = np.ones((self.n_split_verts, k_neighbors), dtype=bool)
-        self.apply_reach_mask_for_voxels(range(self.n_voxels))
-
-    def update_reach_mask_incremental(self, newly_broken_joints):
-        affected = self.affected_voxels(newly_broken_joints)
-        self.apply_reach_mask_for_voxels(affected)
+    def get_lbs_data(self):
+        weights = self.blend_weights.copy()
+        if self._reach_mask is not None:
+            weights = weights * self._reach_mask.astype(np.float32)
+            weight_sum = weights.sum(axis=1, keepdims=True)
+            weights = weights / np.maximum(weight_sum, 1e-8)
+        k = weights.shape[1]
+        indices = self.blend_indices.copy()
+        if k < 4:
+            pad = 4 - k
+            indices = np.pad(indices, ((0, 0), (0, pad)))
+            weights = np.pad(weights, ((0, 0), (0, pad)))
+        return indices[:, :4].astype(np.float32), weights[:, :4].astype(np.float32)
 
     def deform_split_mesh(self, transforms, voxel_body_start, n_voxels):
         self.last_voxel_slice = transforms[voxel_body_start : voxel_body_start + n_voxels]
