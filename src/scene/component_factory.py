@@ -1,5 +1,6 @@
 from src.physics.physics_world import create_joint_breaker, create_mesh_splitter
 from src.scene.force_modes import ForceApplier
+from src.scene.shooter import Shooter
 from src.rendering.renderer import Renderer
 from src.scene.input_handler import init_window
 
@@ -34,6 +35,16 @@ def create_components(all_obj_data, scene, cfg):
         mesh_splitters.append(mesh_splitter)
         force_appliers.append(create_force_applier(obj_scene, cfg))
     return obj_list, joint_breakers, mesh_splitters, force_appliers
+
+
+def create_shooter(scene, cfg):
+    shooter_cfg = getattr(cfg, "shooter", None)
+    if shooter_cfg is None or not getattr(shooter_cfg, "enabled", False):
+        return None
+    bodies = scene.get("shooter_bodies", [])
+    if not bodies:
+        return None
+    return Shooter(shooter_cfg, bodies, scene["shooter_radius"])
 
 
 def init_renderer(scene, obj_list, all_obj_data, cfg):

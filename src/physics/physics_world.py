@@ -3,7 +3,7 @@ import warp as wp
 import newton
 from src.voxels.voxel_scene import create_voxel_geometry, get_voxel_positions, bind_vertices_to_voxels
 from src.scene_setup import scale_greedy_to_world
-from src.physics.physics_bodies import add_ground, add_voxel_bodies, add_ball, add_walls, add_joints, create_solver
+from src.physics.physics_bodies import add_ground, add_voxel_bodies, add_ball, add_walls, add_joints, create_solver, add_shooter_balls
 from src.physics.joints import JointBreaker
 from src.mesh.mesh_split import MeshSplitter
 
@@ -86,6 +86,7 @@ def build_scene_multi(all_obj_data, cfg):
     first_object_extent, first_voxel_half = first_extent
     all_positions = np.concatenate(all_positions_list, axis=0)
     ball_bodies, ball_radii, ball_cfgs = add_ball(builder, all_positions, first_voxel_half, first_object_extent, cfg)
+    shooter_bodies, shooter_radius = add_shooter_balls(builder, cfg)
     model, state_current, state_next, solver = finalize_model(builder, cfg)
     apply_ball_start_forces(state_current, state_next, ball_bodies, ball_cfgs)
     for obj in per_obj:
@@ -100,6 +101,8 @@ def build_scene_multi(all_obj_data, cfg):
         "ball_bodies": ball_bodies,
         "ball_radii": ball_radii,
         "ball_cfgs": ball_cfgs,
+        "shooter_bodies": shooter_bodies,
+        "shooter_radius": shooter_radius,
         "objects": per_obj,
     }
 

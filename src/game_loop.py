@@ -41,7 +41,7 @@ def render_object(obj, transforms, sim, proj, view, eye):
         obj_renderer.draw_voxels(proj, view, eye)
 
 
-def render_frame(renderer, scene, sim, obj_list, proj, view, eye):
+def render_frame(renderer, scene, sim, obj_list, proj, view, eye, shooter=None):
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
     renderer.draw_ground(proj, view)
     renderer.draw_walls(proj, view, eye)
@@ -53,6 +53,12 @@ def render_frame(renderer, scene, sim, obj_list, proj, view, eye):
             continue
         renderer.update_ball_single(transforms, body, radius)
         renderer.draw_ball(proj, view, eye, tuple(ball_config.color))
+    if shooter is not None:
+        for body in shooter._active:
+            pos = transforms[body, :3]
+            if np.isfinite(pos).all():
+                renderer.update_ball_single(transforms, body, shooter.radius)
+                renderer.draw_ball(proj, view, eye, shooter.color)
 
 
 def load_and_build_scene(scene_file):
@@ -74,19 +80,19 @@ def update_recording(recorder, sim, was_simulating):
         recorder.stop()
 
 
-def run_simulation_loop(scene, sim, camera, cfg, obj_list, joint_breakers, mesh_splitters, force_appliers, renderer, recorder, width, height):
+def run_simulation_loop(scene, sim, camera, cfg, obj_list, joint_breakers, mesh_splitters, force_appliers, renderer, recorder, width, height, shooter=None):
     clock = pygame.time.Clock()
     was_simulating = sim["simulating"]
     running = True
     while running:
-        running, width, height = handle_events(camera, sim, width, height)
+        running, width, height = handle_events(camera, sim, width, height, shooter=shooter, scene=scene)
         movement(camera)
         update_recording(recorder, sim, was_simulating)
         was_simulating = sim["simulating"]
         if sim["simulating"]:
             step_simulation(scene, sim, joint_breakers, mesh_splitters, force_appliers)
         proj, view, eye = compute_view_projection(camera, width, height)
-        render_frame(renderer, scene, sim, obj_list, proj, view, eye)
+        render_frame(renderer, scene, sim, obj_list, proj, view, eye, shooter)
         if recorder and recorder.active:
             recorder.write_frame(width, height)
         pygame.display.flip()

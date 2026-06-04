@@ -71,6 +71,18 @@ DEFAULTS = {
     },
     "balls": [],
     "walls": [],
+    "shooter": {
+        "enabled": False,
+        "speed": 8.0,
+        "radius": 0.3,
+        "density": 500.0,
+        "count": 5,
+        "color": [0.9, 0.3, 0.2],
+        "ke": 1e4,
+        "kd": 1e2,
+        "kf": 1e3,
+        "mu": 0.5,
+    },
     "solver": {
         "iterations": 10,  # itterations need for stabilit / perfomance change lower to get more performance higer stability
         "rigid_body_contact_buffer_size": 4096,  # total buffer size lately found out bigger is better

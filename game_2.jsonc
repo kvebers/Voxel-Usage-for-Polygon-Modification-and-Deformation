@@ -1,7 +1,7 @@
 {
   "objects": [
     {
-      "path": "obj/1.obj",
+      "path": "obj/eggg.obj",
       "offset": [0, 0.0, 1.0],
       "color": [0.6, 0.5, 0.7],
       "resolution": 32,
@@ -50,7 +50,7 @@
   },
   "shooter": {
     "enabled": true,
-    "speed": 5.0,
+    "speed": 15.0,
     "radius": 0.3,
     "density": 500.0,
     "count": 5,
@@ -60,6 +60,7 @@
     "kf": 1e3,
     "mu": 0.5,
   },
+
   "walls": [
     {
       "corners": [

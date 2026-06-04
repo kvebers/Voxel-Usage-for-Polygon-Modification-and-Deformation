@@ -163,6 +163,29 @@ def add_joints(builder, neighbor_pairs, positions, voxel_body_start, joint_world
         )
 
 
+def add_shooter_balls(builder, cfg):
+    shooter_cfg = getattr(cfg, "shooter", None)
+    if shooter_cfg is None or not getattr(shooter_cfg, "enabled", False):
+        return [], 0.3
+    count  = int(getattr(shooter_cfg, "count", 5))
+    radius = float(getattr(shooter_cfg, "radius", 0.3))
+    shape_cfg = newton.ModelBuilder.ShapeConfig(
+        density=float(getattr(shooter_cfg, "density", 500.0)),
+        ke=float(getattr(shooter_cfg, "ke", 1e6)),
+        kd=float(getattr(shooter_cfg, "kd", 1e3)),
+        kf=float(getattr(shooter_cfg, "kf", 1e3)),
+        mu=float(getattr(shooter_cfg, "mu", 0.5)),
+    )
+    bodies = []
+    for i in range(count):
+        # Park far in X so they rest stably on the ground, away from the scene.
+        # Avoids free-fall accumulation that causes physics explosions when respawned.
+        body = builder.add_body(xform=wp.transform(p=wp.vec3(1000.0 + float(i) * 2.0, 0.0, radius), q=wp.quat_identity()))
+        builder.add_shape_sphere(body, radius=radius, cfg=shape_cfg)
+        bodies.append(body)
+    return bodies, radius
+
+
 def create_solver(model, cfg):
     solver_config = cfg.solver
     return newton.solvers.SolverVBD(

@@ -315,3 +315,4 @@ class Renderer:
         glBindVertexArray(self.ball_vao)
         glDrawArraysInstanced(GL_TRIANGLES, 0, self.sphere_vert_count, 1)
         glBindVertexArray(0)
+

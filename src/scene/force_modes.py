@@ -43,19 +43,27 @@ class ForceApplier:
         voxel_mass = self.voxel_mass
         body_f = state.body_f.numpy().copy()
         lin_vel = state.body_qd.numpy()[voxel_body_start : voxel_body_start + voxel_count, :3].astype(np.float32)
-        body_f[voxel_body_start : voxel_body_start + voxel_count, :3] -= drifting_bug_fix_up(lin_vel, voxel_mass)
-        if self.stiffness == 0.0 and self.damping == 0.0:
-            state.body_f = wp.array(body_f, dtype=state.body_f.dtype, device=device)
-            return
-        cur_pos = state.body_q.numpy()[voxel_body_start : voxel_body_start + voxel_count, :3].astype(np.float32)
-        displacement = cur_pos - self.rest_pos
+
         if broken is not None and len(broken) > 0 and np.any(broken):
             labels = self.component_labels(broken)
+            # Voxels not in the main body's component are broken-off pieces.
+            # They should fly free — no drift damp, no elastic restoring force.
+            broken_off = labels != labels[0]
         else:
             labels = np.zeros(voxel_count, dtype=np.int32)
-        body_f[voxel_body_start : voxel_body_start + voxel_count, :3] -= elastic_restoring_delta(
-            displacement, lin_vel, labels, self.stiffness, self.damping, voxel_mass
-        )
+            broken_off = np.zeros(voxel_count, dtype=bool)
+
+        drift = drifting_bug_fix_up(lin_vel, voxel_mass)
+        drift[broken_off] = 0.0
+        body_f[voxel_body_start : voxel_body_start + voxel_count, :3] -= drift
+
+        if self.stiffness != 0.0 or self.damping != 0.0:
+            cur_pos = state.body_q.numpy()[voxel_body_start : voxel_body_start + voxel_count, :3].astype(np.float32)
+            displacement = cur_pos - self.rest_pos
+            delta = elastic_restoring_delta(displacement, lin_vel, labels, self.stiffness, self.damping, voxel_mass)
+            delta[broken_off] = 0.0
+            body_f[voxel_body_start : voxel_body_start + voxel_count, :3] -= delta
+
         state.body_f = wp.array(body_f, dtype=state.body_f.dtype, device=device)
 
     def component_labels(self, broken):
