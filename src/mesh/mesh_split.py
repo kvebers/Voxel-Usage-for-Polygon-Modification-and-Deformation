@@ -5,9 +5,6 @@ from src.mesh.mesh_helpers import (
     compute_normals,
     compute_model_space_centers,
     build_vox_to_verts_index,
-    compute_normals,
-    compute_model_space_centers,
-    build_vox_to_verts_index,
 )
 from src.utils.math_utils import batch_quat_to_mat3
 
@@ -36,20 +33,23 @@ class MeshSplitter:
 
     def compute_voxel_centers(self, positions, mesh_verts, bindings, offsets, n_voxels):
         positions_arr = np.array(positions, dtype=np.float32)
+        # sim space → mesh space
         vox_centers_shifted = positions_arr @ self.BASE_ROT
         orig_bindings = np.array(bindings, dtype=np.int32)
         orig_offsets = np.array(offsets, dtype=np.float32).reshape(-1, 3)
         vox_model, valid = compute_model_space_centers(mesh_verts, orig_bindings, orig_offsets, n_voxels)
+        # bias correction using anchored voxels
         if valid.any():
             mesh_offset = (vox_centers_shifted[valid] - vox_model[valid]).mean(axis=0)
         else:
             mesh_offset = np.zeros(3, dtype=np.float32)
         vox_centers_mesh = vox_centers_shifted - mesh_offset
-        vox_centers_mesh[valid] = vox_model[valid]
+        vox_centers_mesh[valid] = vox_model[valid]  # exact centers where known
         self.vox_centers_mesh = vox_centers_mesh
         return KDTree(vox_centers_mesh), positions_arr
 
     def assign_vertices_to_voxels(self, indices, mesh_verts, n_voxels, vox_tree):
+        # unshared verts per triangle so pieces can split independently
         vox_centers_mesh = self.vox_centers_mesh
         orig_indices = indices.reshape(-1, 3)
         v0s = mesh_verts[orig_indices[:, 0]]
@@ -65,7 +65,7 @@ class MeshSplitter:
             verts_all = np.stack([v0s, v1s, v2s], axis=1).reshape(-1, 3)
             vert_offsets = verts_all - vox_centers_mesh[vert_owners]
             tri_base_indices = np.arange(n_tris, dtype=np.uint32) * 3
-            flat_indices = (tri_base_indices[:, None] + np.array([0, 1, 2], dtype=np.uint32)).ravel()
+            flat_indices = (tri_base_indices[:, None] + np.array([0, 1, 2], dtype=np.uint32)).ravel()  # into expanded buffer
         else:
             vert_owners = np.empty(0, dtype=np.int32)
             vert_offsets = np.empty((0, 3), dtype=np.float32)
@@ -78,26 +78,29 @@ class MeshSplitter:
         self._vox_to_verts = build_vox_to_verts_index(n_voxels, self.split_bindings)
         self.split_mesh_verts = self.split_offsets + vox_centers_mesh[self.split_bindings]
 
-    def ensure_primary_in_candidates(self, lbs_index, lbs_dists):
-        primary_in_set = (lbs_index == self.split_bindings[:, None]).any(axis=1)
+    def ensure_voxel_blend_set(self, ffd_index, ffd_dists):
+        """
+        owning voxel must be in blend set or fracture seams break
+        """
+        primary_in_set = (ffd_index == self.split_bindings[:, None]).any(axis=1)
         missing = ~primary_in_set
         if missing.any():
-            lbs_index[missing, -1] = self.split_bindings[missing]
+            ffd_index[missing, -1] = self.split_bindings[missing]
             mv = self.split_mesh_verts[missing]
             pv = self.vox_centers_mesh[self.split_bindings[missing]]
-            lbs_dists[missing, -1] = np.linalg.norm(mv - pv, axis=1).astype(np.float32)
+            ffd_dists[missing, -1] = np.linalg.norm(mv - pv, axis=1).astype(np.float32)
 
     def compute_blend_weights(self, vox_tree, voxel_half, n_voxels):
         k_neighbors = min(4, n_voxels)
-        lbs_dists, lbs_index = vox_tree.query(self.split_mesh_verts, k=k_neighbors)
-        lbs_dists = lbs_dists.reshape(-1, k_neighbors)
-        lbs_index = lbs_index.reshape(-1, k_neighbors)
-        self.ensure_primary_in_candidates(lbs_index, lbs_dists)
-        sigma = 2.0 * voxel_half
-        lbs_w = np.exp(-(lbs_dists**2) / (2.0 * sigma**2)).astype(np.float32)
-        lbs_w /= np.maximum(lbs_w.sum(axis=1, keepdims=True), 1e-8)
-        self.blend_indices = lbs_index.astype(np.int32)
-        self.blend_weights = lbs_w
+        ffd_dists, ffd_index = vox_tree.query(self.split_mesh_verts, k=k_neighbors)
+        ffd_dists = ffd_dists.reshape(-1, k_neighbors)
+        ffd_index = ffd_index.reshape(-1, k_neighbors)
+        self.ensure_voxel_blend_set(ffd_index, ffd_dists)
+        sigma = 2.0 * voxel_half # Gaussian falloff
+        ffd_w = np.exp(-(ffd_dists**2) / (2.0 * sigma**2)).astype(np.float32)
+        ffd_w /= np.maximum(ffd_w.sum(axis=1, keepdims=True), 1e-8)
+        self.blend_indices = ffd_index.astype(np.int32)
+        self.blend_weights = ffd_w
 
     def compute_rest_positions(self, positions_arr):
         mask = self.split_bindings >= 0
@@ -111,7 +114,7 @@ class MeshSplitter:
         self._cached_index = None
         self._last_voxel_slice = None
         self.gpu_dirty = True
-        self.local_offsets = (self.BASE_ROT @ self.split_offsets.T).T
+        self.local_offsets = (self.BASE_ROT @ self.split_offsets.T).T  # offsets in body-local frame
         init_pos = self.compute_rest_positions(positions_arr)
         self.rest_normals = compute_normals(init_pos, self.split_indices.reshape(-1, 3), self.n_split_verts)
         self.current_index_count = len(self.split_indices)
@@ -128,9 +131,12 @@ class MeshSplitter:
             self._broken_dirty = True
 
     def bfs_voxels(self, starts, depth=3):
+        """
+        # depth-limited, BFS to slow
+        """
         reachable = set(starts)
         frontier = list(starts)
-        for _ in range(depth):
+        for _ in range(depth):  # TODO optimize this is the bottle neck
             next_frontier = []
             for voxel in frontier:
                 for neighbor_voxel, joint_index in self._adj_list[voxel]:
@@ -163,14 +169,15 @@ class MeshSplitter:
         return visited
 
     def apply_reach_mask_for_voxels(self, voxels):
+        # zero out blend weights that cross a broken joint
         for voxel_index in voxels:
             verts = self._vox_to_verts[voxel_index]
             if not verts:
                 continue
             reachable = self.bfs_voxels([voxel_index])
-            vi_arr = np.array(verts, dtype=np.int32)
+            vertex_indecie_array = np.array(verts, dtype=np.int32)
             reachable_arr = np.fromiter(reachable, dtype=np.int32)
-            self._reach_mask[vi_arr] = np.isin(self.blend_indices[vi_arr], reachable_arr)
+            self._reach_mask[vertex_indecie_array] = np.isin(self.blend_indices[vertex_indecie_array], reachable_arr)
 
     def update_reach_mask(self):
         k_neighbors = self.blend_indices.shape[1]
@@ -185,5 +192,8 @@ class MeshSplitter:
         self.apply_reach_mask_for_voxels(affected)
 
     def deform_split_mesh(self, transforms, voxel_body_start, n_voxels):
+        """
+        deformation runs on GPU
+        """
         self.last_voxel_slice = transforms[voxel_body_start : voxel_body_start + n_voxels]
         return None, None

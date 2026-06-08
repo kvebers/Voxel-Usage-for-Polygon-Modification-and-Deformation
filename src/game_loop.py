@@ -11,6 +11,9 @@ from src.scene.input_handler import handle_events
 
 
 def render_object(obj, transforms, sim, proj, view, eye):
+    """
+    Render cycle voxels or mesh
+    """
     obj_scene = obj["scene"]
     obj_renderer = obj["obj_renderer"]
     mesh_splitter = obj["mesh_splitter"]
@@ -27,6 +30,9 @@ def render_object(obj, transforms, sim, proj, view, eye):
 
 
 def render_frame(renderer, scene, sim, obj_list, proj, view, eye):
+    """
+    Render meshes, floor and ball
+    """
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
     renderer.draw_ground(proj, view)
     transforms = scene["state_current"].body_q.numpy()
@@ -40,6 +46,9 @@ def render_frame(renderer, scene, sim, obj_list, proj, view, eye):
 
 
 def load_and_build_scene(scene_file):
+    """
+    Get configs, build opengl scene
+    """
     cfg = load_config(scene_file)
     obj_configs = get_object_configs(cfg)
     vox_ctx = moderngl.create_standalone_context()
@@ -52,6 +61,9 @@ def load_and_build_scene(scene_file):
 
 
 def update_recording(recorder, sim, was_simulating):
+    """
+    Recording helper to make vids
+    """
     if recorder and not recorder.active and sim["simulating"] and not was_simulating:
         recorder.start()
     elif recorder and recorder.active and not sim["simulating"] and was_simulating:
@@ -59,6 +71,9 @@ def update_recording(recorder, sim, was_simulating):
 
 
 def run_simulation_loop(scene, sim, camera, cfg, obj_list, joint_breakers, mesh_splitters, force_appliers, renderer, recorder, width, height):
+    """
+    Main Simulation loop
+    """
     clock = pygame.time.Clock()
     was_simulating = sim["simulating"]
     running = True

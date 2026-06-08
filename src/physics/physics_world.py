@@ -1,7 +1,7 @@
 import numpy as np
 import warp as wp
 import newton
-from src.voxels.voxel_scene import create_voxel_geometry, get_voxel_positions, bind_vertices_to_voxels
+from src.voxels.voxel_scene import create_voxel_geometry_helper, get_voxel_positions, bind_vertices_to_voxels
 from src.scene_setup import scale_greedy_to_world
 from src.physics.physics_bodies import add_ground, add_voxel_bodies, add_ball, add_joints, create_solver
 from src.physics.joints import JointBreaker
@@ -9,19 +9,24 @@ from src.mesh.mesh_split import MeshSplitter
 
 
 def compute_object_world_geometry(obj_data, cfg):
-    mesh_verts = obj_data["centered_verts"]
-    coords = obj_data["coords"]
-    coord_to_index = obj_data["coord_to_index"]
-    resolution = obj_data["resolution"]
+    mesh_verts = obj_data["centered_verts"]  # actual 3D points of mesh
+    coords = obj_data["coords"]  # voxel grid positions
+    coord_to_index = obj_data["coord_to_index"]  # lookup map
+    resolution = obj_data["resolution"]  # resolution
     world_offset = tuple(obj_data["offset"])
-    extent, _, voxel_size, half, grid_min = create_voxel_geometry(mesh_verts, resolution, cfg)
-    positions = get_voxel_positions(coords, resolution, cfg, mesh_verts, half, world_offset=world_offset)
-    bindings, offsets = bind_vertices_to_voxels(mesh_verts, coords, coord_to_index, grid_min, voxel_size, resolution)
-    block_halves_world, joint_world_offsets = scale_greedy_to_world(obj_data["block_halves_voxel"], obj_data["joint_voxel_offsets"], voxel_size)
+    extent, _, voxel_size, half, grid_min = create_voxel_geometry_helper(mesh_verts, resolution, cfg)  # voxel size
+    positions = get_voxel_positions(coords, resolution, cfg, mesh_verts, half, world_offset=world_offset)  # ofset voxels
+    bindings, offsets = bind_vertices_to_voxels(mesh_verts, coords, coord_to_index, grid_min, voxel_size, resolution)  # glue mesh vertices to their voxels
+    block_halves_world, joint_world_offsets = scale_greedy_to_world(
+        obj_data["block_halves_voxel"], obj_data["joint_voxel_offsets"], voxel_size
+    )  # change positions
     return (positions, bindings, offsets, block_halves_world, joint_world_offsets, extent, half)
 
 
 def finalize_model(builder, cfg):
+    """
+    setup newton solver
+    """
     builder.color()
     model = builder.finalize(device=wp.get_cuda_device())
     state_current = model.state()
@@ -32,6 +37,9 @@ def finalize_model(builder, cfg):
 
 
 def add_objects_to_builder(builder, all_obj_data, cfg):
+    """
+    Sets the object data
+    """
     per_obj = []
     joint_offset = 0
     first_extent = None
@@ -64,16 +72,19 @@ def add_objects_to_builder(builder, all_obj_data, cfg):
 
 
 def apply_ball_start_forces(state_current, state_next, ball_bodies, ball_cfgs):
+    """
+    Adds start vellocity to the ball
+    """
     if not ball_bodies:
         return
     device = wp.get_cuda_device()
-    body_qd_np = state_current.body_qd.numpy().copy()
+    body_qd_vel = state_current.body_qd.numpy().copy()
     for body, ball_config in zip(ball_bodies, ball_cfgs):
         vel = getattr(ball_config, "initial_velocity", [0.0, 0.0, 0.0])
-        body_qd_np[body, 0] = float(vel[0])
-        body_qd_np[body, 1] = float(vel[1])
-        body_qd_np[body, 2] = float(vel[2])
-    vel_arr = wp.array(body_qd_np, dtype=wp.spatial_vector, device=device)
+        body_qd_vel[body, 0] = float(vel[0])
+        body_qd_vel[body, 1] = float(vel[1])
+        body_qd_vel[body, 2] = float(vel[2])
+    vel_arr = wp.array(body_qd_vel, dtype=wp.spatial_vector, device=device)
     wp.copy(state_current.body_qd, vel_arr)
     wp.copy(state_next.body_qd, vel_arr)
 
@@ -84,9 +95,9 @@ def build_scene_multi(all_obj_data, cfg):
     per_obj, all_positions_list, first_extent = add_objects_to_builder(builder, all_obj_data, cfg)
     first_object_extent, first_voxel_half = first_extent
     all_positions = np.concatenate(all_positions_list, axis=0)
-    ball_bodies, ball_radii, ball_cfgs = add_ball(builder, all_positions, first_voxel_half, first_object_extent, cfg)
+    ball_bodies, ball_radiuses, ball_cfgs = add_ball(builder, all_positions, first_voxel_half, first_object_extent, cfg)  # TODO refactor
     model, state_current, state_next, solver = finalize_model(builder, cfg)
-    apply_ball_start_forces(state_current, state_next, ball_bodies, ball_cfgs)
+    apply_ball_start_forces(state_current, state_next, ball_bodies, ball_cfgs)  # TODO refactor
     for obj in per_obj:
         obj["solver"] = solver
     return {
@@ -97,7 +108,7 @@ def build_scene_multi(all_obj_data, cfg):
         "contacts": model.contacts(),
         "solver": solver,
         "ball_bodies": ball_bodies,
-        "ball_radii": ball_radii,
+        "ball_radii": ball_radiuses,
         "ball_cfgs": ball_cfgs,
         "objects": per_obj,
     }

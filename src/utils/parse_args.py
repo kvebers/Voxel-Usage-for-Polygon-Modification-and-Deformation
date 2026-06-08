@@ -3,6 +3,9 @@ import argparse
 
 
 def parse_args():
+    """
+    Gets the scene and record params
+    """
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument("scene", nargs="?", default="scene.jsonc", help="Scene config")
     arg_parser.add_argument("--record", nargs="?", const=True, metavar="OUTPUT.mp4", help="Record video")

@@ -31,6 +31,9 @@ def remove_comments(text):
 
 
 def load_config(path="scene.jsonc"):
+    """
+    Checks correct file tipe loads defaults
+    """
     path = Path(path)
     if not path.exists() and path.suffix == ".jsonc":
         print("Wrong file type")

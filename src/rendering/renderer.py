@@ -1,16 +1,26 @@
 import ctypes
 import numpy as np
 from OpenGL.GL import *
-from src.rendering.draw_helpers import *
+from src.utils.math_utils import perspective_matrix, look_at_matrix, quat_to_mat3, quat_to_mat4, batch_quat_to_mat3
+from src.rendering.gl_vao import setup_mesh_vao, setup_mesh_vao_gpu, setup_instanced_vao, setup_instanced_color_vao, setup_ground_vao
+from src.rendering.gl_geometry import (
+    compile_shader_program,
+    make_unit_cube,
+    make_uv_sphere,
+    make_ground_quad,
+    compute_vertex_normals,
+    create_vao,
+    create_buffer,
+)
 from src.rendering.shaders import *
 from src.constants import LIGHT_DIR
 
 
-def _cache_locs(prog, names):
+def cache_locs(prog, names):
     return {name: glGetUniformLocation(prog, name) for name in names}
 
 
-def _create_tbo(size_bytes, fmt=GL_RGB32F):
+def create_tbo(size_bytes, fmt=GL_RGB32F):
     buf = glGenBuffers(1)
     glBindBuffer(GL_TEXTURE_BUFFER, buf)
     glBufferData(GL_TEXTURE_BUFFER, size_bytes, None, GL_DYNAMIC_DRAW)
@@ -79,8 +89,8 @@ class ObjectRenderer:
         glBindBuffer(GL_ARRAY_BUFFER, 0)
         binding_data = mesh_splitter.split_bindings.astype(np.float32)
         self.mesh_binding_vbo = create_buffer(binding_data, usage=GL_STATIC_DRAW)
-        self._voxel_pos_buf, self._voxel_pos_tex = _create_tbo(voxel_count * 12, GL_RGB32F)
-        self._voxel_quat_buf, self._voxel_quat_tex = _create_tbo(voxel_count * 16, GL_RGBA32F)
+        self._voxel_pos_buf, self._voxel_pos_tex = create_tbo(voxel_count * 12, GL_RGB32F)
+        self._voxel_quat_buf, self._voxel_quat_tex = create_tbo(voxel_count * 16, GL_RGBA32F)
         setup_mesh_vao_gpu(self.mesh_vao, self.mesh_vbo, self.mesh_binding_vbo, self.mesh_ebo)
         glUseProgram(self._renderer.prog_mesh)
         glUniform1i(glGetUniformLocation(self._renderer.prog_mesh, "uVoxelPos"), 0)
@@ -133,7 +143,7 @@ class ObjectRenderer:
 
     def draw_mesh_mode(self, proj, view, cam_pos, color, index_count=None):
         renderer = self._renderer
-        locs = renderer._uloc_mesh
+        locs = renderer.uloc_mesh
         glUseProgram(renderer.prog_mesh)
         glUniformMatrix4fv(locs["uProj"], 1, GL_TRUE, proj)
         glUniformMatrix4fv(locs["uView"], 1, GL_TRUE, view)
@@ -150,7 +160,7 @@ class ObjectRenderer:
 
     def draw_voxels(self, proj, view, cam_pos):
         renderer = self._renderer
-        locs = renderer._uloc_inst_color
+        locs = renderer.uloc_inst_color
         glUseProgram(renderer.prog_inst_color)
         glUniformMatrix4fv(locs["uProj"], 1, GL_TRUE, proj)
         glUniformMatrix4fv(locs["uView"], 1, GL_TRUE, view)
@@ -162,42 +172,42 @@ class ObjectRenderer:
 
 class Renderer:
     def __init__(self):
-        self._compile_programs()
-        self._setup_lighting()
-        self._setup_ground_geometry()
-        self._setup_sphere_geometry()
+        self.compile_programs()
+        self.setup_lighting()
+        self.setup_ground_geometry()
+        self.setup_sphere_geometry()
 
-    def _compile_programs(self):
+    def compile_programs(self):
         self.prog_mesh = compile_shader_program(VERT_MESH, FRAG_BLINN)
         self.prog_inst = compile_shader_program(VERT_INSTANCED, FRAG_BLINN)
         self.prog_inst_color = compile_shader_program(VERT_INSTANCED_COLOR, FRAG_BLINN_INSTANCED)
         self.prog_ground = compile_shader_program(VERT_GROUND, FRAG_GROUND)
-        self._uloc_mesh = _cache_locs(self.prog_mesh, ["uProj", "uView", "uColor", "uLightDir", "uCamPos", "uAmbient"])
-        self._uloc_inst = _cache_locs(self.prog_inst, ["uProj", "uView", "uColor", "uLightDir", "uCamPos", "uAmbient"])
-        self._uloc_inst_color = _cache_locs(self.prog_inst_color, ["uProj", "uView", "uLightDir", "uCamPos", "uAmbient"])
-        self._uloc_ground = _cache_locs(self.prog_ground, ["uProj", "uView"])
+        self.uloc_mesh = cache_locs(self.prog_mesh, ["uProj", "uView", "uColor", "uLightDir", "uCamPos", "uAmbient"])
+        self.uloc_inst = cache_locs(self.prog_inst, ["uProj", "uView", "uColor", "uLightDir", "uCamPos", "uAmbient"])
+        self.uloc_inst_color = cache_locs(self.prog_inst_color, ["uProj", "uView", "uLightDir", "uCamPos", "uAmbient"])
+        self._uloc_ground = cache_locs(self.prog_ground, ["uProj", "uView"])
 
-    def _setup_lighting(self):
+    def setup_lighting(self):
         glUseProgram(self.prog_mesh)
-        glUniform3fv(self._uloc_mesh["uLightDir"], 1, LIGHT_DIR)
-        glUniform1f(self._uloc_mesh["uAmbient"], 0.4)
+        glUniform3fv(self.uloc_mesh["uLightDir"], 1, LIGHT_DIR)
+        glUniform1f(self.uloc_mesh["uAmbient"], 0.4)
         glUseProgram(self.prog_inst)
-        glUniform3fv(self._uloc_inst["uLightDir"], 1, LIGHT_DIR)
-        glUniform1f(self._uloc_inst["uAmbient"], 0.4)
+        glUniform3fv(self.uloc_inst["uLightDir"], 1, LIGHT_DIR)
+        glUniform1f(self.uloc_inst["uAmbient"], 0.4)
         glUseProgram(self.prog_inst_color)
-        glUniform3fv(self._uloc_inst_color["uLightDir"], 1, LIGHT_DIR)
-        glUniform1f(self._uloc_inst_color["uAmbient"], 0.4)
+        glUniform3fv(self.uloc_inst_color["uLightDir"], 1, LIGHT_DIR)
+        glUniform1f(self.uloc_inst_color["uAmbient"], 0.4)
         glUseProgram(0)
 
-    def _setup_ground_geometry(self):
+    def setup_ground_geometry(self):
         ground_data, self.ground_vert_count = make_ground_quad()
         self.ground_vao = create_vao()
         self.ground_vbo = create_buffer(ground_data)
         setup_ground_vao(self.ground_vao, self.ground_vbo)
-        cube_data, self.cube_vert_count = make_unit_cube()
+        cube_data, self.cube_vert_count = make_unit_cube() # TODO refactor
         self.cube_geom_vbo = create_buffer(cube_data)
 
-    def _setup_sphere_geometry(self):
+    def setup_sphere_geometry(self):
         sphere_data, self.sphere_vert_count = make_uv_sphere(20, 14)
         self.sphere_geom_vbo = create_buffer(sphere_data)
         self.sphere_inst_vbo = create_buffer(size=64, usage=GL_DYNAMIC_DRAW)
@@ -225,7 +235,7 @@ class Renderer:
         glBindVertexArray(0)
 
     def draw_ball(self, proj, view, cam_pos, color):
-        locs = self._uloc_inst
+        locs = self.uloc_inst
         glUseProgram(self.prog_inst)
         glUniformMatrix4fv(locs["uProj"], 1, GL_TRUE, proj)
         glUniformMatrix4fv(locs["uView"], 1, GL_TRUE, view)

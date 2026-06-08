@@ -3,6 +3,9 @@ import numpy as np
 
 
 def perspective_matrix(fov_deg, aspect, near, far):
+    """
+    Add depth for the world. Resize objects.
+    """
     focal_length = 1.0 / math.tan(math.radians(fov_deg) / 2.0)
     matrix = np.zeros((4, 4), dtype=np.float32)
     matrix[0, 0] = focal_length / aspect
@@ -13,7 +16,10 @@ def perspective_matrix(fov_deg, aspect, near, far):
     return matrix
 
 
-def look_at_matrix(eye, target, up):
+def look_at_matrix(eye, target, up):  # TODO refactor and remove
+    """
+    Sets matrix to point at the world
+    """
     eye = np.asarray(eye, np.float32)
     target = np.asarray(target, np.float32)
     up = np.asarray(up, np.float32)
@@ -33,6 +39,9 @@ def look_at_matrix(eye, target, up):
 
 
 def quat_to_mat3(q):
+    """
+    Turns quat matrice into 3x3 matrix
+    """
     x, y, z, w = float(q[0]), float(q[1]), float(q[2]), float(q[3])
     return np.array(
         [
@@ -45,6 +54,9 @@ def quat_to_mat3(q):
 
 
 def quat_to_mat4(q, pos):
+    """
+    Turns rot and pos into matrix
+    """
     rotation_mat = quat_to_mat3(q)
     matrix = np.eye(4, dtype=np.float32)
     matrix[:3, :3] = rotation_mat
@@ -52,8 +64,10 @@ def quat_to_mat4(q, pos):
     return matrix
 
 
-# does spinning
 def batch_quat_to_mat3(q):
+    """
+    Set up many rotation matrices
+    """
     x, y, z, w = q[:, 0], q[:, 1], q[:, 2], q[:, 3]
     x2, y2, z2 = x * x, y * y, z * z
     xy, xz, yz = x * y, x * z, y * z

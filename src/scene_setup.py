@@ -23,16 +23,19 @@ def get_object_configs(cfg):
 
 def load_and_preprocess_mesh(obj_config):
     vertices, indices = load_obj(obj_config.path)
-    center = (vertices.min(axis=0) + vertices.max(axis=0)) * 0.5
+    center = (vertices.min(axis=0) + vertices.max(axis=0)) * 0.5  # finds the center point
     verts = vertices - center
     if obj_config.rot is not None:
-        verts = (np.array(obj_config.rot, dtype=np.float32) @ verts.T).T
+        verts = (np.array(obj_config.rot, dtype=np.float32) @ verts.T).T  # rotation if provided
     if obj_config.scale != 1.0:
-        verts = verts * obj_config.scale
+        verts = verts * obj_config.scale  # adds scale if provided
     return verts, indices
 
 
 def load_and_voxelize_one(cfg, obj_config, ctx=None):
+    """
+    Setups OBJ, Voxel Grid, Ensure connection, Simplifies if greedy merge enabled, pre processes the mesh
+    """
     fill_mode = bool(getattr(cfg.voxels, "fill_mode", True))
     ensure_connected = bool(getattr(cfg.voxels, "ensure_connected", False))
     greedy_merge = bool(getattr(cfg.voxels, "greedy_merge", False))

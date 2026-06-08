@@ -4,7 +4,7 @@
       "path": "obj/1.obj",
       "offset": [0, 0.0, 1.0],
       "color": [0.6, 0.5, 0.7],
-      "resolution": 32,
+      "resolution": 8,
     },
   ],
 
@@ -22,6 +22,8 @@
     "density": 300.0,
     "padding": 0.02,
     "fill_mode": true,
+    "greedy_merge": true,
+    "ensure_connected": true,
   },
 
   "elasticity": {

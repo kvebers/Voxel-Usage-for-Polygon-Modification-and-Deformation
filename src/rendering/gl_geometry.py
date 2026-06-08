@@ -10,7 +10,7 @@ def compile_shader_program(vert_src, frag_src):
     return gl_shaders.compileProgram(vertex_shader, fragment_shader)
 
 
-def make_unit_cube():
+def make_unit_cube(): # remove....
     half_extent = 1.0
     faces = [
         (
@@ -89,6 +89,9 @@ def make_unit_cube():
 
 
 def make_uv_sphere(slices=8, stacks=12):
+    """
+    https://gamedev.stackexchange.com/questions/16585/how-do-you-programmatically-generate-a-sphere
+    """
     verts = []
     for i in range(stacks):
         theta0 = math.pi * i / stacks

@@ -4,6 +4,9 @@ import newton
 
 
 def add_ground(builder, cfg):
+    """
+    Reads config adds ground
+    """
     ground_config = cfg.ground
     gx, gy, gz = ground_config.position
     builder.add_body(xform=wp.transform(p=wp.vec3(gx, gy, gz), q=wp.quat_identity()))
@@ -15,28 +18,30 @@ def add_ground(builder, cfg):
 
 
 def add_voxel_bodies(builder, positions, half, cfg, block_halves_world=None):
-    voxel_body_start = builder.body_count
+    voxel_body_start = builder.body_count  # remember where our voxels start in the body list
     voxel_config = cfg.voxels
-    shape_kwargs = dict(density=voxel_config.density, kf=getattr(voxel_config, "kf", 1e4), mu=getattr(voxel_config, "mu", 1.0))
-    ke = getattr(voxel_config, "ke", None)
-    kd = getattr(voxel_config, "kd", None)
+    shape_kwargs = dict(density=voxel_config.density, kf=getattr(voxel_config, "kf", 1e4), mu=getattr(voxel_config, "mu", 1.0))  # physical material properties
+    ke = getattr(voxel_config, "ke", None)  # contact stiffness, optional
+    kd = getattr(voxel_config, "kd", None)  # contact damping, optional
     if ke is not None:
         shape_kwargs["ke"] = ke
     if kd is not None:
         shape_kwargs["kd"] = kd
-    voxel_shape_cfg = newton.ModelBuilder.ShapeConfig(**shape_kwargs)
-    identity_quat = wp.quat_identity()
+    voxel_shape_cfg = newton.ModelBuilder.ShapeConfig(**shape_kwargs)  # set all material settings config
+    identity_quat = wp.quat_identity()  # no rotation
     body_index = voxel_body_start
     if block_halves_world is not None:
+        # greedy mode: each block has its own size
         for i, pos in enumerate(positions):
-            builder.add_body(xform=wp.transform(p=wp.vec3(float(pos[0]), float(pos[1]), float(pos[2])), q=identity_quat))
-            hx, hy, hz = block_halves_world[i]
-            builder.add_shape_box(body=body_index, hx=hx, hy=hy, hz=hz, cfg=voxel_shape_cfg)
+            builder.add_body(xform=wp.transform(p=wp.vec3(float(pos[0]), float(pos[1]), float(pos[2])), q=identity_quat))  # place body at position
+            hx, hy, hz = block_halves_world[i]  # this block's unique half-size
+            builder.add_shape_box(body=body_index, hx=hx, hy=hy, hz=hz, cfg=voxel_shape_cfg)  # attach box collider
             body_index += 1
     else:
+        # normal mode: all voxels are same size cubes
         for pos in positions:
-            builder.add_body(xform=wp.transform(p=wp.vec3(float(pos[0]), float(pos[1]), float(pos[2])), q=identity_quat))
-            builder.add_shape_box(body=body_index, hx=half, hy=half, hz=half, cfg=voxel_shape_cfg)
+            builder.add_body(xform=wp.transform(p=wp.vec3(float(pos[0]), float(pos[1]), float(pos[2])), q=identity_quat))  # set body
+            builder.add_shape_box(body=body_index, hx=half, hy=half, hz=half, cfg=voxel_shape_cfg)  # attach body
             body_index += 1
     return voxel_body_start
 
@@ -47,7 +52,7 @@ def add_ball(builder, positions, half, extent, cfg):
         return [], [], []
     max_z = float(positions[:, 2].max())
     ball_bodies = []
-    ball_radii = []
+    ball_radiuses = []
     for ball_config in balls_cfg:
         ball_radius = extent * ball_config.radius_factor
         ball_shape_cfg = newton.ModelBuilder.ShapeConfig(
@@ -64,11 +69,14 @@ def add_ball(builder, positions, half, extent, cfg):
         body = builder.add_body(xform=wp.transform(p=spawn, q=wp.quat_identity()))
         builder.add_shape_sphere(body, radius=ball_radius, cfg=ball_shape_cfg)
         ball_bodies.append(body)
-        ball_radii.append(ball_radius)
-    return ball_bodies, ball_radii, balls_cfg
+        ball_radiuses.append(ball_radius)
+    return ball_bodies, ball_radiuses, balls_cfg
 
 
 def compute_joint_offsets(pairs, positions, joint_world_offsets):
+    """
+    Sets joint offsets, from voxel positions
+    """
     if joint_world_offsets is not None:
         world_offsets_arr = np.asarray(joint_world_offsets)
         return world_offsets_arr[:, 0], world_offsets_arr[:, 1]
@@ -77,6 +85,9 @@ def compute_joint_offsets(pairs, positions, joint_world_offsets):
 
 
 def add_joints(builder, neighbor_pairs, positions, voxel_body_start, joint_world_offsets=None):
+    """
+    Adds joints, from neighbor paris
+    """
     if not neighbor_pairs:
         return
     identity_quat = wp.quat_identity()

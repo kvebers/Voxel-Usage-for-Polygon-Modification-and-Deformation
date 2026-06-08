@@ -3,21 +3,24 @@ from src.constants import FACE_DEFS
 
 
 def greedy_merge_grid(grid):
+    """
+    Prepeares one biggest voxel grid
+    """
     remaining = grid.astype(bool).copy()
     blocks = []
     for x0, y0, z0 in np.argwhere(remaining):
         x0, y0, z0 = int(x0), int(y0), int(z0)
         if not remaining[x0, y0, z0]:
             continue
-        x1 = x0
-        while x1 + 1 < grid.shape[0] and remaining[x1 + 1, y0, z0]:
-            x1 += 1
-        y1 = y0
-        while y1 + 1 < grid.shape[1] and remaining[x0 : x1 + 1, y1 + 1, z0].all():
-            y1 += 1
         z1 = z0
-        while z1 + 1 < grid.shape[2] and remaining[x0 : x1 + 1, y0 : y1 + 1, z1 + 1].all():
+        while z1 + 1 < grid.shape[2] and remaining[x0, y0, z1 + 1]:  # expand across z axis
             z1 += 1
+        y1 = y0
+        while y1 + 1 < grid.shape[1] and remaining[x0, y1 + 1, z0 : z1 + 1].all():  # expand across y axis
+            y1 += 1
+        x1 = x0
+        while x1 + 1 < grid.shape[0] and remaining[x1 + 1, y0 : y1 + 1, z0 : z1 + 1].all():  # expand across x axis
+            x1 += 1
         blocks.append((x0, y0, z0, x1, y1, z1))
         remaining[x0 : x1 + 1, y0 : y1 + 1, z0 : z1 + 1] = False
     return blocks

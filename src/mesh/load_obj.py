@@ -10,23 +10,23 @@ def parse_verts(v_parts):
 
 
 def quick_parse_faces(f_parts, n_verts):
-    raw_f = np.fromstring(" ".join(f_parts), dtype=np.int32, sep=" ")
+    raw_f = np.fromstring(" ".join(f_parts), dtype=np.int32, sep=" ")  # simple np array conversion
     neg = raw_f < 0
     raw_f[neg] += n_verts
     raw_f[~neg] -= 1
     n_per = round(len(raw_f) / len(f_parts))
     if n_per == 3:
         return raw_f
-    if n_per == 4:
+    if n_per == 4:  # quads...
         faces = raw_f.reshape(-1, 4)
         tris = np.empty((len(faces) * 2, 3), dtype=np.int32)
-        tris[0::2] = faces[:, [0, 1, 2]]
-        tris[1::2] = faces[:, [0, 2, 3]]
+        tris[0::2] = faces[:, [0, 1, 2]]  # 0 2 4 6
+        tris[1::2] = faces[:, [0, 2, 3]]  # 1 3 5 7
         return tris.reshape(-1)
     faces = raw_f.reshape(-1, n_per)
     n_tris = n_per - 2
     tris = np.empty((len(faces) * n_tris, 3), dtype=np.int32)
-    for i in range(n_tris):
+    for i in range(n_tris):  # edge case
         tris[i::n_tris, 0] = faces[:, 0]
         tris[i::n_tris, 1] = faces[:, i + 1]
         tris[i::n_tris, 2] = faces[:, i + 2]
@@ -54,15 +54,15 @@ def normalize_verts(vertices):
 
 
 def fix_messed_up_faces(vertices, indices):
-    if len(indices) < 3:
+    if len(indices) < 3:  # can not make a triangle
         return indices
-    tri = indices.reshape(-1, 3)
+    tri = indices.reshape(-1, 3)  # bunch up in triangles
     i0, i1, i2 = tri[:, 0], tri[:, 1], tri[:, 2]
-    no_dup = ~((i0 == i1) | (i1 == i2) | (i0 == i2))
+    no_dup = ~((i0 == i1) | (i1 == i2) | (i0 == i2))  # check if actually a triangle
     v0, v1, v2 = vertices[i0], vertices[i1], vertices[i2]
-    cross = np.cross(v1 - v0, v2 - v0)
-    no_degen = np.einsum("ij,ij->i", cross, cross) >= 1e-16
-    return tri[no_dup & no_degen].reshape(-1)
+    cross = np.cross(v1 - v0, v2 - v0)  # checks if triangles are on the same line
+    no_degen = np.einsum("ij,ij->i", cross, cross) >= 1e-16  # check the area of triangle remove
+    return tri[no_dup & no_degen].reshape(-1)  # removes the corrupted triangles
 
 
 def load_obj(path):
@@ -80,11 +80,11 @@ def load_obj(path):
     vertices = parse_verts(v_parts)
     n_verts = len(v_parts)
     if not f_parts:
-        indices = np.empty(0, dtype=np.int32)
+        indices = np.empty(0, dtype=np.int32)  # edge case
     elif "/" not in f_parts[0] and (not f_vcounts or f_vcounts[0] == n_verts):
-        indices = quick_parse_faces(f_parts, n_verts)
+        indices = quick_parse_faces(f_parts, n_verts)  # when there is no texture information
     else:
-        indices = alternative_parser(f_parts, f_vcounts)
-    vertices = normalize_verts(vertices)
+        indices = alternative_parser(f_parts, f_vcounts)  # when there is texture information, we remove it for now
+    vertices = normalize_verts(vertices)  # uniform size
     indices = fix_messed_up_faces(vertices, indices)
     return vertices, indices.astype(np.int32)

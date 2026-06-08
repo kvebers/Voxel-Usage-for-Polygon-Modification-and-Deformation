@@ -17,17 +17,17 @@ def preprocess_vertices(vertex_data, pad=0.01):
     return positions, num_tris
 
 
-def voxelize_gpu(vertex_data, resolution=64, *, ctx=None, prenormalized=False):
+def voxelize_gpu(vertex_data, resolution=32, ctx=None, prenormalized=False):
     own_ctx = ctx is None
     if own_ctx:
         ctx = moderngl.create_standalone_context()
-    words_z = (resolution + 31) // 32
-    if prenormalized:
+    words_z = (resolution + 31) // 32  # subsplit
+    if prenormalized:  # normalize into range
         transformed = np.asarray(vertex_data, dtype=np.float32).reshape(-1, 3)
     else:
         transformed, _num_tris = preprocess_vertices(vertex_data, pad=0.01)
-    cache = get_cache(ctx)
-    prog = cache["prog"]
+    cache = get_cache(ctx)  # gets GPU resources
+    prog = cache["prog"]  # gets shader program
     update_vbo(ctx, cache, transformed)
     vao = ctx.vertex_array(prog, [(cache["vbo"], "3f", "in_position")])
     update_fbo(ctx, cache, resolution)
